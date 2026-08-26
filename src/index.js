@@ -111,6 +111,49 @@ async function api(request, env, url) {
     await audit(env,user.id,'create','category',id,{name,type}); return json({ok:true,id},201);
   }
 
+  if (path === '/api/services' && request.method === 'GET') {
+    const month = url.searchParams.get('month');
+    let sql = `SELECT * FROM service_transactions WHERE user_id=?`;
+    const binds=[user.id];
+    if (month && /^\d{4}-\d{2}$/.test(month)) { sql += ` AND substr(transaction_date,1,7)=?`; binds.push(month); }
+    sql += ` ORDER BY transaction_date DESC, created_at DESC`;
+    const r=await env.DB.prepare(sql).bind(...binds).all();
+    return json({items:r.results||[]});
+  }
+
+  if (path === '/api/services' && request.method === 'POST') {
+    const b=await body(request);
+    const type=b.type==='entrada'?'entrada':b.type==='saida'?'saida':null;
+    const serviceName=String(b.service_name||'').trim();
+    const clientName=String(b.client_name||'').trim();
+    const description=String(b.description||'').trim();
+    const amountCents=Math.round(Number(b.amount||0)*100);
+    const date=String(b.transaction_date||'');
+    if(!type||!serviceName||!description||!Number.isFinite(amountCents)||amountCents<=0||!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({error:'Preencha serviço, descrição, valor e data.'},400);
+    const id=uid(),ts=nowIso();
+    await env.DB.prepare(`INSERT INTO service_transactions(id,user_id,service_name,client_name,type,description,amount_cents,transaction_date,category,payment_method,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,user.id,serviceName,clientName||null,type,description,amountCents,date,String(b.category||'').trim()||null,String(b.payment_method||'').trim()||null,String(b.notes||'').trim()||null,ts,ts).run();
+    await audit(env,user.id,'create','service_transaction',id,{serviceName,clientName,type,amountCents,date});
+    return json({ok:true,id},201);
+  }
+
+  if (path.startsWith('/api/services/') && request.method === 'DELETE') {
+    const id=path.split('/').pop();
+    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).first();
+    if(!found) return json({error:'Lançamento de serviço não encontrado.'},404);
+    await env.DB.prepare(`DELETE FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).run();
+    await audit(env,user.id,'delete','service_transaction',id);
+    return json({ok:true});
+  }
+
+  if (path === '/api/services/dashboard' && request.method === 'GET') {
+    const month=url.searchParams.get('month') || new Date().toISOString().slice(0,7);
+    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=?`).bind(user.id,month).first();
+    const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) resultado FROM service_transactions WHERE user_id=?`).bind(user.id).first();
+    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,month).all();
+    return json({month,receitas_cents:summary?.receitas||0,custos_cents:summary?.custos||0,lucro_cents:(summary?.receitas||0)-(summary?.custos||0),resultado_total_cents:total?.resultado||0,servicos:summary?.servicos||0,clientes:summary?.clientes||0,by_service:byService.results||[]});
+  }
+
   if (path === '/api/transactions' && request.method === 'GET') {
     const month = url.searchParams.get('month');
     let sql = `SELECT t.*, c.name category_name, c.icon category_icon FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=?`;

@@ -1,6 +1,7 @@
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } });
 const nowIso = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
+const PASSWORD_ITERATIONS = 10000;
 
 async function sha256Hex(value) {
   const data = new TextEncoder().encode(value);
@@ -8,9 +9,11 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function pbkdf2(password, saltHex, iterations = 120000) {
+async function pbkdf2(password, saltHex, iterations = PASSWORD_ITERATIONS) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const salt = Uint8Array.from(saltHex.match(/.{1,2}/g).map(x => parseInt(x, 16)));
+  const saltParts = String(saltHex || '').match(/.{1,2}/g);
+  if (!saltParts?.length) throw new Error('Salt de senha inválido.');
+  const salt = Uint8Array.from(saltParts.map(x => parseInt(x, 16)));
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
   return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -63,8 +66,8 @@ async function api(request, env, url) {
     const b = await body(request);
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim().toLowerCase(); const password = String(b.password || '');
     if (!name || !email || password.length < 8) return json({ error: 'Informe nome, e-mail e senha com pelo menos 8 caracteres.' }, 400);
-    const salt = randomHex(16); const hash = await pbkdf2(password, salt); const id = uid(); const ts = nowIso();
-    await env.DB.prepare(`INSERT INTO users(id,name,email,password_salt,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`).bind(id,name,email,salt,hash,ts,ts).run();
+    const salt = randomHex(16); const hash = await pbkdf2(password, salt, PASSWORD_ITERATIONS); const id = uid(); const ts = nowIso();
+    await env.DB.prepare(`INSERT INTO users(id,name,email,password_salt,password_hash,password_iterations,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,name,email,salt,hash,PASSWORD_ITERATIONS,ts,ts).run();
     await seedDefaultCategories(env,id); await audit(env,id,'setup','user',id);
     return json({ ok: true });
   }
@@ -78,7 +81,7 @@ async function api(request, env, url) {
     const b = await body(request); const email = String(b.email || '').trim().toLowerCase(); const password = String(b.password || '');
     const u = await env.DB.prepare(`SELECT * FROM users WHERE email=?`).bind(email).first();
     if (!u) return json({ error: 'E-mail ou senha inválidos.' }, 401);
-    const hash = await pbkdf2(password, u.password_salt, u.password_iterations || 120000);
+    const hash = await pbkdf2(password, u.password_salt, Number(u.password_iterations) || PASSWORD_ITERATIONS);
     if (hash !== u.password_hash) return json({ error: 'E-mail ou senha inválidos.' }, 401);
     const token = randomHex(32); const tokenHash = await sha256Hex(token); const ts = nowIso(); const expires = Date.now() + 1000*60*60*24*30;
     await env.DB.prepare(`INSERT INTO sessions(token_hash,user_id,created_at,last_seen_at,expires_at) VALUES(?,?,?,?,?)`).bind(tokenHash,u.id,ts,ts,expires).run();
@@ -153,8 +156,13 @@ async function api(request, env, url) {
 
 export default {
   async fetch(request, env) {
-    const url=new URL(request.url);
-    if (url.pathname === '/health' || url.pathname.startsWith('/api/')) return api(request,env,url);
-    return env.ASSETS.fetch(request);
+    try {
+      const url=new URL(request.url);
+      if (url.pathname === '/health' || url.pathname.startsWith('/api/')) return await api(request,env,url);
+      return env.ASSETS.fetch(request);
+    } catch (error) {
+      console.error('financeiro-eduardo worker error', error);
+      return json({ error: 'Erro interno no servidor. Tente novamente em alguns segundos.' }, 500);
+    }
   }
 };

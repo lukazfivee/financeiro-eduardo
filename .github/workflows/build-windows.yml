@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   build:
+    name: Gerar Financeiro Eduardo 0.2.0
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -35,6 +36,6 @@ jobs:
       - name: Publicar artefato
         uses: actions/upload-artifact@v4
         with:
-          name: Financeiro-Eduardo-Windows
+          name: Financeiro-Eduardo-Windows-0.2.0
           path: dist/*.exe
           if-no-files-found: error

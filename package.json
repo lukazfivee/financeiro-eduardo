@@ -3,14 +3,31 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "node --check src/index.js && node --check public/app.js && node --check public/sw.js",
     "db:local": "wrangler d1 execute financeiro-eduardo --local --file=./schema.sql",
-    "db:remote": "wrangler d1 execute financeiro-eduardo --remote --file=./schema.sql"
+    "db:remote": "wrangler d1 execute financeiro-eduardo --remote --file=./schema.sql",
+    "desktop": "electron .",
+    "build:win": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "br.com.financeiroeduardo.app",
+    "productName": "Financeiro Eduardo",
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["portable"],
+      "artifactName": "Financeiro-Eduardo-${version}.exe"
+    }
   },
   "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "wrangler": "^4.33.1"
   }
 }

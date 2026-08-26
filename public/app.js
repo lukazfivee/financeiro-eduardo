@@ -2,38 +2,202 @@ const app=document.querySelector('#app');
 const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(c)||0)/100);
 const today=()=>new Date().toISOString().slice(0,10);
 const currentMonth=()=>new Date().toISOString().slice(0,7);
+const monthLabel=v=>{if(!v)return'';const [y,m]=v.split('-');return new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(Number(y),Number(m)-1,1));};
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 let token=localStorage.getItem('financeiro_token')||'';
 let state={user:null,categories:[],transactions:[],dashboard:null,month:currentMonth()};
 
 async function api(path,opts={}){
-  const headers={'content-type':'application/json',...(opts.headers||{})}; if(token) headers.authorization=`Bearer ${token}`;
+  const headers={'content-type':'application/json',...(opts.headers||{})};
+  if(token)headers.authorization=`Bearer ${token}`;
   const r=await fetch(path,{...opts,headers});
   if(r.status===401&&token){localStorage.removeItem('financeiro_token');token='';renderLogin();throw new Error('Sessão expirada.');}
-  const ct=r.headers.get('content-type')||''; const data=ct.includes('application/json')?await r.json():await r.text();
-  if(!r.ok) throw new Error(data?.error||'Erro na operação.'); return data;
+  const ct=r.headers.get('content-type')||'';
+  const data=ct.includes('application/json')?await r.json():await r.text();
+  if(!r.ok)throw new Error(data?.error||'Erro na operação.');
+  return data;
 }
 
-function loginTemplate(configured){return `<main class="login"><section class="login-card"><h1>Financeiro Eduardo</h1><p>${configured?'Acesse para controlar entradas, saídas e saldo.':'Primeiro acesso: crie o usuário administrador.'}</p><form id="authForm" class="form">${configured?'':`<div class="field"><label>Nome</label><input name="name" autocomplete="name" required></div>`}<div class="field"><label>E-mail</label><input name="email" type="email" autocomplete="email" required></div><div class="field"><label>Senha</label><input name="password" type="password" minlength="8" autocomplete="current-password" required></div><button class="btn primary" type="submit">${configured?'Entrar':'Criar acesso'}</button><div id="authError" class="error"></div></form></section></main>`}
+function icon(type){
+  const icons={wallet:'R$',up:'↑',down:'↓',trend:'↗',plus:'+',home:'⌂',list:'≡',chart:'◫',export:'⇩',logout:'↪'};
+  return `<span class="ui-icon">${icons[type]||''}</span>`;
+}
 
-async function renderLogin(){const s=await fetch('/api/setup/status').then(r=>r.json()).catch(()=>({configured:false}));app.innerHTML=loginTemplate(s.configured);document.querySelector('#authForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const payload=Object.fromEntries(fd.entries());const err=document.querySelector('#authError');err.textContent='';try{if(!s.configured){await api('/api/setup',{method:'POST',body:JSON.stringify(payload)});}const res=await api('/api/login',{method:'POST',body:JSON.stringify(payload)});token=res.token;localStorage.setItem('financeiro_token',token);await boot();}catch(ex){err.textContent=ex.message;}}}
+function loginTemplate(configured){
+  return `<main class="auth-page">
+    <section class="auth-hero">
+      <div class="auth-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
+      <div class="auth-copy">
+        <span class="eyebrow">CONTROLE FINANCEIRO</span>
+        <h1>Seu dinheiro,<br><strong>mais organizado.</strong></h1>
+        <p>Acompanhe entradas, saídas e seu saldo em um só lugar, de forma simples e visual.</p>
+        <div class="auth-points"><span>✓ Visão mensal</span><span>✓ Categorias</span><span>✓ Histórico completo</span></div>
+      </div>
+      <div class="auth-orb orb-one"></div><div class="auth-orb orb-two"></div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="mobile-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
+        <span class="eyebrow">${configured?'BEM-VINDO DE VOLTA':'PRIMEIRO ACESSO'}</span>
+        <h2>${configured?'Entre na sua conta':'Crie seu acesso'}</h2>
+        <p>${configured?'Informe seus dados para acessar o painel.':'Cadastre o usuário administrador para começar.'}</p>
+        <form id="authForm" class="auth-form">
+          ${configured?'':`<label>Nome completo<input name="name" autocomplete="name" placeholder="Digite seu nome" required></label>`}
+          <label>E-mail<input name="email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" required></label>
+          <label>Senha<input name="password" type="password" minlength="8" autocomplete="current-password" placeholder="Mínimo de 8 caracteres" required></label>
+          <button class="btn primary auth-submit" type="submit">${configured?'Entrar no painel':'Criar acesso'} <span>→</span></button>
+          <div id="authError" class="error"></div>
+        </form>
+      </div>
+    </section>
+  </main>`;
+}
 
-async function load(){const [me,cats,tx,dash]=await Promise.all([api('/api/me'),api('/api/categories'),api(`/api/transactions?month=${state.month}`),api(`/api/dashboard?month=${state.month}`)]);state.user=me.user;state.categories=cats.items;state.transactions=tx.items;state.dashboard=dash;}
+async function renderLogin(){
+  const s=await fetch('/api/setup/status').then(r=>r.json()).catch(()=>({configured:false}));
+  app.innerHTML=loginTemplate(s.configured);
+  document.querySelector('#authForm').onsubmit=async e=>{
+    e.preventDefault();
+    const fd=new FormData(e.currentTarget);const payload=Object.fromEntries(fd.entries());
+    const err=document.querySelector('#authError');const btn=e.currentTarget.querySelector('button[type="submit"]');
+    err.textContent='';btn.disabled=true;btn.classList.add('loading');
+    try{
+      if(!s.configured)await api('/api/setup',{method:'POST',body:JSON.stringify(payload)});
+      const res=await api('/api/login',{method:'POST',body:JSON.stringify(payload)});
+      token=res.token;localStorage.setItem('financeiro_token',token);await boot();
+    }catch(ex){err.textContent=ex.message;btn.disabled=false;btn.classList.remove('loading');}
+  };
+}
 
-function dashboardHtml(){const d=state.dashboard||{};return `<div class="grid"><div class="card kpi"><span>Entradas no mês</span><strong class="positive">${money(d.entradas_cents)}</strong></div><div class="card kpi"><span>Saídas no mês</span><strong class="negative">${money(d.saidas_cents)}</strong></div><div class="card kpi"><span>Resultado do mês</span><strong class="${(d.saldo_mes_cents||0)>=0?'positive':'negative'}">${money(d.saldo_mes_cents)}</strong></div><div class="card kpi"><span>Saldo acumulado</span><strong class="${(d.saldo_total_cents||0)>=0?'positive':'negative'}">${money(d.saldo_total_cents)}</strong></div></div>`}
+async function load(){
+  const [me,cats,tx,dash]=await Promise.all([
+    api('/api/me'),api('/api/categories'),api(`/api/transactions?month=${state.month}`),api(`/api/dashboard?month=${state.month}`)
+  ]);
+  state.user=me.user;state.categories=cats.items;state.transactions=tx.items;state.dashboard=dash;
+}
 
-function transactionsHtml(){if(!state.transactions.length)return `<div class="empty">Nenhum lançamento neste mês.</div>`;return `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead><tbody>${state.transactions.map(t=>`<tr><td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td><td><span class="badge ${t.type==='entrada'?'in':'out'}">${t.type==='entrada'?'Entrada':'Saída'}</span></td><td class="desc">${esc(t.description)}</td><td>${esc((t.category_icon||'')+' '+(t.category_name||'Sem categoria'))}</td><td class="${t.type==='entrada'?'positive':'negative'}">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td><td><button class="btn ghost" data-delete="${t.id}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`}
+function kpisHtml(){
+  const d=state.dashboard||{};
+  return `<div class="kpi-grid">
+    <article class="kpi-card balance-card"><div class="kpi-top"><span class="kpi-icon wallet">${icon('wallet')}</span><span>Saldo acumulado</span></div><strong>${money(d.saldo_total_cents)}</strong><small>Patrimônio registrado</small></article>
+    <article class="kpi-card"><div class="kpi-top"><span class="kpi-icon income">${icon('up')}</span><span>Entradas</span></div><strong class="positive">${money(d.entradas_cents)}</strong><small>${monthLabel(state.month)}</small></article>
+    <article class="kpi-card"><div class="kpi-top"><span class="kpi-icon expense">${icon('down')}</span><span>Saídas</span></div><strong class="negative">${money(d.saidas_cents)}</strong><small>${monthLabel(state.month)}</small></article>
+    <article class="kpi-card"><div class="kpi-top"><span class="kpi-icon result">${icon('trend')}</span><span>Resultado do mês</span></div><strong class="${(d.saldo_mes_cents||0)>=0?'positive':'negative'}">${money(d.saldo_mes_cents)}</strong><small>${(d.saldo_mes_cents||0)>=0?'Saldo positivo no período':'Atenção aos gastos do período'}</small></article>
+  </div>`;
+}
 
-function categoriesHtml(){const items=state.dashboard?.expenses_by_category||[];if(!items.length)return `<div class="empty">Sem despesas por categoria neste mês.</div>`;const total=items.reduce((a,b)=>a+Number(b.total_cents||0),0);return `<div class="cats">${items.map(x=>`<div class="card cat-row"><span>${esc(x.icon||'📁')} ${esc(x.name)}</span><span>${money(x.total_cents)} <small class="hint">${total?Math.round(x.total_cents/total*100):0}%</small></span></div>`).join('')}</div>`}
+function transactionsHtml(){
+  if(!state.transactions.length)return `<div class="empty-state"><div class="empty-icon">↕</div><h3>Nenhuma movimentação</h3><p>Você ainda não registrou lançamentos em ${monthLabel(state.month)}.</p><button class="btn primary" data-open-new>+ Adicionar lançamento</button></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Tipo</th><th class="value-col">Valor</th><th></th></tr></thead><tbody>${state.transactions.map(t=>`<tr>
+    <td><div class="tx-main"><span class="tx-symbol ${t.type}">${t.type==='entrada'?'↑':'↓'}</span><div><strong>${esc(t.description)}</strong><small>${esc(t.payment_method||'Não informado')}</small></div></div></td>
+    <td><span class="category-pill">${esc((t.category_icon||'')+' '+(t.category_name||'Sem categoria'))}</span></td>
+    <td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td>
+    <td><span class="badge ${t.type==='entrada'?'in':'out'}">${t.type==='entrada'?'Entrada':'Saída'}</span></td>
+    <td class="value-col ${t.type==='entrada'?'positive':'negative'}">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td>
+    <td><button class="icon-btn" title="Excluir" data-delete="${t.id}">×</button></td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
 
-function renderApp(){app.innerHTML=`<main class="wrap"><header class="topbar"><div class="brand"><h1>Financeiro Eduardo</h1><p>Olá, ${esc(state.user?.name||'Eduardo')}. Controle simples de entradas e saídas.</p></div><div class="toolbar"><button id="newBtn" class="btn primary">+ Novo lançamento</button><button id="logoutBtn" class="btn ghost">Sair</button></div></header>${dashboardHtml()}<section class="section"><div class="section-head"><h2>Movimentações</h2><div class="toolbar"><input id="month" class="month-input" type="month" value="${state.month}"><button id="exportBtn" class="btn ghost">Exportar CSV</button></div></div>${transactionsHtml()}</section><section class="section"><div class="section-head"><h2>Despesas por categoria</h2></div>${categoriesHtml()}</section></main>`;
- document.querySelector('#newBtn').onclick=openModal; document.querySelector('#logoutBtn').onclick=logout; document.querySelector('#month').onchange=async e=>{state.month=e.target.value;await refresh();}; document.querySelector('#exportBtn').onclick=exportCsv; document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeTx(b.dataset.delete));}
+function categoriesHtml(){
+  const items=state.dashboard?.expenses_by_category||[];
+  if(!items.length)return `<div class="mini-empty"><span>◌</span><p>Sem despesas por categoria neste mês.</p></div>`;
+  const total=items.reduce((a,b)=>a+Number(b.total_cents||0),0);
+  return `<div class="category-list">${items.map((x,i)=>{const pct=total?Math.round(Number(x.total_cents||0)/total*100):0;return `<div class="category-row">
+    <div class="category-title"><span class="category-avatar tone-${i%5}">${esc(x.icon||'•')}</span><div><strong>${esc(x.name)}</strong><small>${pct}% das despesas</small></div></div>
+    <div class="category-amount"><strong>${money(x.total_cents)}</strong><div class="progress"><span style="width:${Math.max(4,pct)}%"></span></div></div>
+  </div>`;}).join('')}</div>`;
+}
 
-function openModal(){const options=state.categories.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc((c.icon||'')+' '+c.name)}</option>`).join('');document.body.insertAdjacentHTML('beforeend',`<div id="modal" class="modal"><div class="modal-card"><div class="section-head"><h2>Novo lançamento</h2><button id="closeModal" class="btn ghost">Fechar</button></div><form id="txForm" class="form"><div class="field"><label>Tipo</label><select name="type" id="type"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div><div class="field"><label>Valor</label><input name="amount" type="number" min="0.01" step="0.01" required></div><div class="field full"><label>Descrição</label><input name="description" required></div><div class="field"><label>Data</label><input name="transaction_date" type="date" value="${today()}" required></div><div class="field"><label>Categoria</label><select name="category_id" id="category"><option value="">Sem categoria</option>${options}</select></div><div class="field"><label>Forma de pagamento</label><select name="payment_method"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão de débito">Cartão de débito</option><option value="Cartão de crédito">Cartão de crédito</option><option value="Transferência">Transferência</option><option value="Boleto">Boleto</option><option value="Outro">Outro</option></select></div><div class="field full"><label>Observações</label><textarea name="notes" rows="3"></textarea></div><div id="txError" class="error field full"></div><div class="field full"><button class="btn primary" type="submit">Salvar lançamento</button></div></form></div></div>`);const modal=document.querySelector('#modal');document.querySelector('#closeModal').onclick=()=>modal.remove();document.querySelector('#txForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const payload=Object.fromEntries(fd.entries());try{await api('/api/transactions',{method:'POST',body:JSON.stringify(payload)});modal.remove();state.month=payload.transaction_date.slice(0,7);await refresh();}catch(ex){document.querySelector('#txError').textContent=ex.message;}}}
+function overviewHtml(){
+  const d=state.dashboard||{};
+  const income=Number(d.entradas_cents||0), expense=Number(d.saidas_cents||0), max=Math.max(income,expense,1);
+  const incomePct=Math.round(income/max*100), expensePct=Math.round(expense/max*100);
+  return `<div class="overview-chart">
+    <div class="chart-head"><div><span class="eyebrow">FLUXO DO MÊS</span><h3>Entradas x saídas</h3></div><span class="period-chip">${monthLabel(state.month)}</span></div>
+    <div class="bar-group"><div class="bar-line"><div><span class="dot income-dot"></span>Entradas</div><strong>${money(income)}</strong></div><div class="bar-track"><span class="income-bar" style="width:${incomePct}%"></span></div></div>
+    <div class="bar-group"><div class="bar-line"><div><span class="dot expense-dot"></span>Saídas</div><strong>${money(expense)}</strong></div><div class="bar-track"><span class="expense-bar" style="width:${expensePct}%"></span></div></div>
+    <div class="chart-footer"><span>Resultado</span><strong class="${(d.saldo_mes_cents||0)>=0?'positive':'negative'}">${money(d.saldo_mes_cents)}</strong></div>
+  </div>`;
+}
 
-async function removeTx(id){if(!confirm('Excluir este lançamento?'))return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){alert(ex.message)}}
-async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();URL.revokeObjectURL(a.href);}catch(ex){alert(ex.message)}}
+function renderApp(){
+  app.innerHTML=`<div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand"><div class="brand-mark">R$</div><div><strong>Financeiro</strong><span>Eduardo</span></div></div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active">${icon('home')}<span>Visão geral</span></button>
+        <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
+        <button class="nav-item" id="navCategories">${icon('chart')}<span>Categorias</span></button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="user-avatar">${esc((state.user?.name||'E').trim().charAt(0).toUpperCase())}</div>
+        <div class="user-meta"><strong>${esc(state.user?.name||'Eduardo')}</strong><span>${esc(state.user?.email||'')}</span></div>
+        <button id="logoutBtn" class="logout-icon" title="Sair">${icon('logout')}</button>
+      </div>
+    </aside>
+    <main class="main-content">
+      <header class="page-header">
+        <div><span class="eyebrow">PAINEL FINANCEIRO</span><h1>Olá, ${esc((state.user?.name||'Eduardo').split(' ')[0])} 👋</h1><p>Acompanhe seu dinheiro e mantenha tudo sob controle.</p></div>
+        <div class="header-actions"><input id="month" class="month-input" type="month" value="${state.month}"><button id="newBtn" class="btn primary">${icon('plus')} Novo lançamento</button></div>
+      </header>
+      ${kpisHtml()}
+      <section class="dashboard-grid">
+        <article class="panel">${overviewHtml()}</article>
+        <article class="panel" id="categoriesSection"><div class="panel-head"><div><span class="eyebrow">DESPESAS</span><h2>Por categoria</h2></div></div>${categoriesHtml()}</article>
+      </section>
+      <section class="panel transactions-panel" id="transactionsSection">
+        <div class="panel-head"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2></div><div class="panel-actions"><span class="record-count">${state.transactions.length} ${state.transactions.length===1?'lançamento':'lançamentos'}</span><button id="exportBtn" class="btn secondary">${icon('export')} Exportar CSV</button></div></div>
+        ${transactionsHtml()}
+      </section>
+    </main>
+  </div>`;
+  document.querySelector('#newBtn').onclick=openModal;
+  document.querySelectorAll('[data-open-new]').forEach(b=>b.onclick=openModal);
+  document.querySelector('#logoutBtn').onclick=logout;
+  document.querySelector('#month').onchange=async e=>{state.month=e.target.value;await refresh();};
+  document.querySelector('#exportBtn').onclick=exportCsv;
+  document.querySelector('#navTransactions').onclick=()=>document.querySelector('#transactionsSection').scrollIntoView({behavior:'smooth'});
+  document.querySelector('#navCategories').onclick=()=>document.querySelector('#categoriesSection').scrollIntoView({behavior:'smooth'});
+  document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeTx(b.dataset.delete));
+}
+
+function filterCategoryOptions(type){
+  const sel=document.querySelector('#category');if(!sel)return;
+  [...sel.options].forEach(o=>{if(!o.value)return;o.hidden=!(o.dataset.type===type||o.dataset.type==='ambos');});
+  if(sel.selectedOptions[0]?.hidden)sel.value='';
+}
+
+function openModal(){
+  const options=state.categories.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc((c.icon||'')+' '+c.name)}</option>`).join('');
+  document.body.insertAdjacentHTML('beforeend',`<div id="modal" class="modal"><div class="modal-card">
+    <div class="modal-head"><div><span class="eyebrow">MOVIMENTAÇÃO</span><h2>Novo lançamento</h2><p>Registre uma entrada ou saída no seu financeiro.</p></div><button id="closeModal" class="modal-close">×</button></div>
+    <form id="txForm" class="form">
+      <div class="type-switch full"><label><input type="radio" name="type" value="entrada" checked><span class="type-entry">↑ Entrada</span></label><label><input type="radio" name="type" value="saida"><span class="type-exit">↓ Saída</span></label></div>
+      <label class="field full"><span>Descrição</span><input name="description" placeholder="Ex.: Pagamento de cliente" required></label>
+      <label class="field"><span>Valor</span><div class="money-input"><b>R$</b><input name="amount" type="number" min="0.01" step="0.01" placeholder="0,00" required></div></label>
+      <label class="field"><span>Data</span><input name="transaction_date" type="date" value="${today()}" required></label>
+      <label class="field"><span>Categoria</span><select name="category_id" id="category"><option value="">Sem categoria</option>${options}</select></label>
+      <label class="field"><span>Forma de pagamento</span><select name="payment_method"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão de débito">Cartão de débito</option><option value="Cartão de crédito">Cartão de crédito</option><option value="Transferência">Transferência</option><option value="Boleto">Boleto</option><option value="Outro">Outro</option></select></label>
+      <label class="field full"><span>Observações</span><textarea name="notes" rows="3" placeholder="Opcional"></textarea></label>
+      <div id="txError" class="error full"></div>
+      <div class="modal-actions full"><button type="button" class="btn secondary" id="cancelModal">Cancelar</button><button class="btn primary" type="submit">Salvar lançamento</button></div>
+    </form>
+  </div></div>`);
+  const modal=document.querySelector('#modal');
+  const close=()=>modal.remove();document.querySelector('#closeModal').onclick=close;document.querySelector('#cancelModal').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close();};
+  document.querySelectorAll('input[name="type"]').forEach(r=>r.onchange=e=>filterCategoryOptions(e.target.value));filterCategoryOptions('entrada');
+  document.querySelector('#txForm').onsubmit=async e=>{
+    e.preventDefault();const fd=new FormData(e.currentTarget);const payload=Object.fromEntries(fd.entries());const btn=e.currentTarget.querySelector('button[type="submit"]');btn.disabled=true;
+    try{await api('/api/transactions',{method:'POST',body:JSON.stringify(payload)});modal.remove();state.month=payload.transaction_date.slice(0,7);await refresh();}
+    catch(ex){document.querySelector('#txError').textContent=ex.message;btn.disabled=false;}
+  };
+}
+
+async function removeTx(id){if(!confirm('Excluir este lançamento?'))return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){alert(ex.message);}}
+async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){alert(ex.message);}}
 async function logout(){try{await api('/api/logout',{method:'POST'});}catch{}localStorage.removeItem('financeiro_token');token='';renderLogin();}
 async function refresh(){await load();renderApp();}
 async function boot(){if(!token)return renderLogin();try{await refresh();}catch{if(token)renderLogin();}}
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});boot();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+boot();

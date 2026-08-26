@@ -1,0 +1,40 @@
+name: Gerar EXE Financeiro Eduardo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - desktop/**
+      - package.json
+      - .github/workflows/build-windows.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Gerar executavel
+        run: npm run build:win
+
+      - name: Publicar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: Financeiro-Eduardo-Windows
+          path: dist/*.exe
+          if-no-files-found: error

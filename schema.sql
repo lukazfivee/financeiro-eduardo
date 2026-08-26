@@ -52,6 +52,25 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions(user_id, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS transactions_category_idx ON transactions(user_id, category_id);
 
+CREATE TABLE IF NOT EXISTS service_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  service_name TEXT NOT NULL,
+  client_name TEXT,
+  type TEXT NOT NULL CHECK (type IN ('entrada','saida')),
+  description TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  transaction_date TEXT NOT NULL,
+  category TEXT,
+  payment_method TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS service_transactions_user_date_idx ON service_transactions(user_id, transaction_date DESC);
+CREATE INDEX IF NOT EXISTS service_transactions_user_service_idx ON service_transactions(user_id, service_name);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT,

@@ -11,7 +11,7 @@ on:
       - .github/workflows/build-windows.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -39,3 +39,17 @@ jobs:
           name: Financeiro-Eduardo-Windows-0.2.0
           path: dist/*.exe
           if-no-files-found: error
+
+      - name: Anexar executavel na release v0.2.0
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release create v0.2.0 \
+              --target main \
+              --title "Financeiro Eduardo v0.2.0" \
+              --notes "Financeiro Eduardo v0.2.0"
+          fi
+          gh release upload v0.2.0 dist/*.exe --clobber

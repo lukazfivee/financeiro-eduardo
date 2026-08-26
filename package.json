@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check public/app.js && node --check public/sw.js",
+    "check": "node --check src/index.js && node --check public/app.js && node --check public/services.js && node --check public/theme.js && node --check public/sw.js",
     "db:local": "wrangler d1 execute financeiro-eduardo --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute financeiro-eduardo --remote --file=./schema.sql",
     "desktop": "electron .",

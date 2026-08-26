@@ -2,6 +2,44 @@ const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(d
 const nowIso = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const PASSWORD_ITERATIONS = 10000;
+const PAYMENT_STATUSES = ['pendente', 'pago', 'recebido', 'atrasado'];
+const SERVICE_STATUSES = ['orcamento', 'aprovado', 'em_andamento', 'concluido', 'cancelado'];
+const RECURRENCE_TYPES = ['nenhuma', 'mensal'];
+
+const cents = value => Math.round(Number(value || 0) * 100);
+const dateOk = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+const monthOk = value => /^\d{4}-\d{2}$/.test(String(value || ''));
+const text = value => String(value || '').trim();
+const optionalText = value => text(value) || null;
+const choice = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+
+async function ensureColumns(env, table, columns) {
+  const existing = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+  const names = new Set((existing.results || []).map(column => column.name));
+  for (const column of columns) {
+    if (!names.has(column.name)) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column.sql}`).run();
+  }
+}
+
+async function ensureAppSchema(env) {
+  await ensureColumns(env, 'transactions', [
+    { name: 'status', sql: `status TEXT NOT NULL DEFAULT 'pago' CHECK (status IN ('pendente','pago','recebido','atrasado'))` },
+    { name: 'recurring_type', sql: `recurring_type TEXT NOT NULL DEFAULT 'nenhuma' CHECK (recurring_type IN ('nenhuma','mensal'))` },
+    { name: 'installment_count', sql: `installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count >= 1)` },
+    { name: 'installment_number', sql: `installment_number INTEGER NOT NULL DEFAULT 1 CHECK (installment_number >= 1)` }
+  ]);
+  await ensureColumns(env, 'service_transactions', [
+    { name: 'payment_status', sql: `payment_status TEXT NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente','pago','recebido','atrasado'))` },
+    { name: 'service_status', sql: `service_status TEXT NOT NULL DEFAULT 'em_andamento' CHECK (service_status IN ('orcamento','aprovado','em_andamento','concluido','cancelado'))` },
+    { name: 'contracted_amount_cents', sql: `contracted_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (contracted_amount_cents >= 0)` },
+    { name: 'received_amount_cents', sql: `received_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (received_amount_cents >= 0)` },
+    { name: 'expected_cost_cents', sql: `expected_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (expected_cost_cents >= 0)` },
+    { name: 'actual_cost_cents', sql: `actual_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (actual_cost_cents >= 0)` },
+    { name: 'recurring_type', sql: `recurring_type TEXT NOT NULL DEFAULT 'nenhuma' CHECK (recurring_type IN ('nenhuma','mensal'))` },
+    { name: 'installment_count', sql: `installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count >= 1)` },
+    { name: 'installment_number', sql: `installment_number INTEGER NOT NULL DEFAULT 1 CHECK (installment_number >= 1)` }
+  ]);
+}
 
 async function sha256Hex(value) {
   const data = new TextEncoder().encode(value);
@@ -91,6 +129,7 @@ async function api(request, env, url) {
 
   const user = await currentUser(request, env);
   if (!user) return json({ error: 'Não autenticado.' }, 401);
+  await ensureAppSchema(env);
 
   if (path === '/api/me' && request.method === 'GET') return json({ user });
 
@@ -113,9 +152,15 @@ async function api(request, env, url) {
 
   if (path === '/api/services' && request.method === 'GET') {
     const month = url.searchParams.get('month');
+    const type = url.searchParams.get('type');
+    const status = url.searchParams.get('status');
+    const category = url.searchParams.get('category');
     let sql = `SELECT * FROM service_transactions WHERE user_id=?`;
     const binds=[user.id];
-    if (month && /^\d{4}-\d{2}$/.test(month)) { sql += ` AND substr(transaction_date,1,7)=?`; binds.push(month); }
+    if (month && monthOk(month)) { sql += ` AND substr(transaction_date,1,7)=?`; binds.push(month); }
+    if (['entrada','saida'].includes(type)) { sql += ` AND type=?`; binds.push(type); }
+    if (PAYMENT_STATUSES.includes(status)) { sql += ` AND payment_status=?`; binds.push(status); }
+    if (category) { sql += ` AND category=?`; binds.push(category); }
     sql += ` ORDER BY transaction_date DESC, created_at DESC`;
     const r=await env.DB.prepare(sql).bind(...binds).all();
     return json({items:r.results||[]});
@@ -127,14 +172,38 @@ async function api(request, env, url) {
     const serviceName=String(b.service_name||'').trim();
     const clientName=String(b.client_name||'').trim();
     const description=String(b.description||'').trim();
-    const amountCents=Math.round(Number(b.amount||0)*100);
+    const amountCents=cents(b.amount);
     const date=String(b.transaction_date||'');
-    if(!type||!serviceName||!description||!Number.isFinite(amountCents)||amountCents<=0||!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({error:'Preencha serviço, descrição, valor e data.'},400);
+    if(!type||!serviceName||!description||!Number.isFinite(amountCents)||amountCents<=0||!dateOk(date)) return json({error:'Preencha serviço, descrição, valor e data.'},400);
+    const paymentStatus=choice(b.payment_status,PAYMENT_STATUSES,type==='entrada'?'recebido':'pendente');
+    const serviceStatus=choice(b.service_status,SERVICE_STATUSES,'em_andamento');
+    const recurringType=choice(b.recurring_type,RECURRENCE_TYPES,'nenhuma');
+    const installmentCount=Math.max(1, Number.parseInt(b.installment_count || '1', 10) || 1);
+    const installmentNumber=Math.min(installmentCount, Math.max(1, Number.parseInt(b.installment_number || '1', 10) || 1));
     const id=uid(),ts=nowIso();
-    await env.DB.prepare(`INSERT INTO service_transactions(id,user_id,service_name,client_name,type,description,amount_cents,transaction_date,category,payment_method,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,user.id,serviceName,clientName||null,type,description,amountCents,date,String(b.category||'').trim()||null,String(b.payment_method||'').trim()||null,String(b.notes||'').trim()||null,ts,ts).run();
+    await env.DB.prepare(`INSERT INTO service_transactions(id,user_id,service_name,client_name,type,description,amount_cents,transaction_date,category,payment_method,notes,payment_status,service_status,contracted_amount_cents,received_amount_cents,expected_cost_cents,actual_cost_cents,recurring_type,installment_count,installment_number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,user.id,serviceName,clientName||null,type,description,amountCents,date,optionalText(b.category),optionalText(b.payment_method),optionalText(b.notes),paymentStatus,serviceStatus,cents(b.contracted_amount),cents(b.received_amount),cents(b.expected_cost),cents(b.actual_cost),recurringType,installmentCount,installmentNumber,ts,ts).run();
     await audit(env,user.id,'create','service_transaction',id,{serviceName,clientName,type,amountCents,date});
     return json({ok:true,id},201);
+  }
+
+  if (path.startsWith('/api/services/') && request.method === 'PUT') {
+    const id=path.split('/').pop();
+    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).first();
+    if(!found) return json({error:'Lançamento de serviço não encontrado.'},404);
+    const b=await body(request);
+    const type=b.type==='entrada'?'entrada':b.type==='saida'?'saida':null;
+    const serviceName=text(b.service_name), description=text(b.description), amountCents=cents(b.amount), date=String(b.transaction_date||'');
+    if(!type||!serviceName||!description||!Number.isFinite(amountCents)||amountCents<=0||!dateOk(date)) return json({error:'Preencha serviço, descrição, valor e data.'},400);
+    const paymentStatus=choice(b.payment_status,PAYMENT_STATUSES,type==='entrada'?'recebido':'pendente');
+    const serviceStatus=choice(b.service_status,SERVICE_STATUSES,'em_andamento');
+    const recurringType=choice(b.recurring_type,RECURRENCE_TYPES,'nenhuma');
+    const installmentCount=Math.max(1, Number.parseInt(b.installment_count || '1', 10) || 1);
+    const installmentNumber=Math.min(installmentCount, Math.max(1, Number.parseInt(b.installment_number || '1', 10) || 1));
+    await env.DB.prepare(`UPDATE service_transactions SET service_name=?,client_name=?,type=?,description=?,amount_cents=?,transaction_date=?,category=?,payment_method=?,notes=?,payment_status=?,service_status=?,contracted_amount_cents=?,received_amount_cents=?,expected_cost_cents=?,actual_cost_cents=?,recurring_type=?,installment_count=?,installment_number=?,updated_at=? WHERE id=? AND user_id=?`)
+      .bind(serviceName,optionalText(b.client_name),type,description,amountCents,date,optionalText(b.category),optionalText(b.payment_method),optionalText(b.notes),paymentStatus,serviceStatus,cents(b.contracted_amount),cents(b.received_amount),cents(b.expected_cost),cents(b.actual_cost),recurringType,installmentCount,installmentNumber,nowIso(),id,user.id).run();
+    await audit(env,user.id,'update','service_transaction',id,{serviceName,type,amountCents,date});
+    return json({ok:true});
   }
 
   if (path.startsWith('/api/services/') && request.method === 'DELETE') {
@@ -148,29 +217,55 @@ async function api(request, env, url) {
 
   if (path === '/api/services/dashboard' && request.method === 'GET') {
     const month=url.searchParams.get('month') || new Date().toISOString().slice(0,7);
-    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=?`).bind(user.id,month).first();
+    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COALESCE(SUM(contracted_amount_cents),0) contratado, COALESCE(SUM(received_amount_cents),0) recebido, COALESCE(SUM(expected_cost_cents),0) custo_previsto, COALESCE(SUM(actual_cost_cents),0) custo_realizado, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=?`).bind(user.id,month).first();
     const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) resultado FROM service_transactions WHERE user_id=?`).bind(user.id).first();
-    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,month).all();
-    return json({month,receitas_cents:summary?.receitas||0,custos_cents:summary?.custos||0,lucro_cents:(summary?.receitas||0)-(summary?.custos||0),resultado_total_cents:total?.resultado||0,servicos:summary?.servicos||0,clientes:summary?.clientes||0,by_service:byService.results||[]});
+    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(MAX(service_status),'em_andamento') service_status, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,month).all();
+    return json({month,receitas_cents:summary?.receitas||0,custos_cents:summary?.custos||0,lucro_cents:(summary?.receitas||0)-(summary?.custos||0),resultado_total_cents:total?.resultado||0,contratado_cents:summary?.contratado||0,recebido_cents:summary?.recebido||0,a_receber_cents:Math.max(0,(summary?.contratado||0)-(summary?.recebido||0)),custo_previsto_cents:summary?.custo_previsto||0,custo_realizado_cents:summary?.custo_realizado||0,servicos:summary?.servicos||0,clientes:summary?.clientes||0,by_service:byService.results||[]});
   }
 
   if (path === '/api/transactions' && request.method === 'GET') {
     const month = url.searchParams.get('month');
+    const type = url.searchParams.get('type');
+    const status = url.searchParams.get('status');
+    const category = url.searchParams.get('category_id');
     let sql = `SELECT t.*, c.name category_name, c.icon category_icon FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=?`;
     const binds=[user.id];
-    if (month && /^\d{4}-\d{2}$/.test(month)) { sql += ` AND substr(t.transaction_date,1,7)=?`; binds.push(month); }
+    if (month && monthOk(month)) { sql += ` AND substr(t.transaction_date,1,7)=?`; binds.push(month); }
+    if (['entrada','saida'].includes(type)) { sql += ` AND t.type=?`; binds.push(type); }
+    if (PAYMENT_STATUSES.includes(status)) { sql += ` AND t.status=?`; binds.push(status); }
+    if (category) { sql += ` AND t.category_id=?`; binds.push(category); }
     sql += ` ORDER BY t.transaction_date DESC, t.created_at DESC`;
     const r = await env.DB.prepare(sql).bind(...binds).all(); return json({items:r.results||[]});
   }
 
   if (path === '/api/transactions' && request.method === 'POST') {
     const b=await body(request); const type=b.type==='entrada'?'entrada':b.type==='saida'?'saida':null; const description=String(b.description||'').trim();
-    const amountCents=Math.round(Number(b.amount||0)*100); const date=String(b.transaction_date||'');
-    if(!type||!description||!Number.isFinite(amountCents)||amountCents<=0||!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({error:'Dados do lançamento inválidos.'},400);
+    const amountCents=cents(b.amount); const date=String(b.transaction_date||'');
+    if(!type||!description||!Number.isFinite(amountCents)||amountCents<=0||!dateOk(date)) return json({error:'Dados do lançamento inválidos.'},400);
+    const status=choice(b.status,PAYMENT_STATUSES,type==='entrada'?'recebido':'pago');
+    const recurringType=choice(b.recurring_type,RECURRENCE_TYPES,'nenhuma');
+    const installmentCount=Math.max(1, Number.parseInt(b.installment_count || '1', 10) || 1);
+    const installmentNumber=Math.min(installmentCount, Math.max(1, Number.parseInt(b.installment_number || '1', 10) || 1));
     const id=uid(),ts=nowIso();
-    await env.DB.prepare(`INSERT INTO transactions(id,user_id,type,description,amount_cents,transaction_date,category_id,payment_method,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,user.id,type,description,amountCents,date,b.category_id||null,String(b.payment_method||'').trim()||null,String(b.notes||'').trim()||null,ts,ts).run();
+    await env.DB.prepare(`INSERT INTO transactions(id,user_id,type,description,amount_cents,transaction_date,category_id,payment_method,notes,status,recurring_type,installment_count,installment_number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,user.id,type,description,amountCents,date,b.category_id||null,optionalText(b.payment_method),optionalText(b.notes),status,recurringType,installmentCount,installmentNumber,ts,ts).run();
     await audit(env,user.id,'create','transaction',id,{type,amountCents,date}); return json({ok:true,id},201);
+  }
+
+  if (path.startsWith('/api/transactions/') && request.method === 'PUT') {
+    const id=path.split('/').pop(); const found=await env.DB.prepare(`SELECT id FROM transactions WHERE id=? AND user_id=?`).bind(id,user.id).first();
+    if(!found) return json({error:'Lançamento não encontrado.'},404);
+    const b=await body(request); const type=b.type==='entrada'?'entrada':b.type==='saida'?'saida':null; const description=text(b.description);
+    const amountCents=cents(b.amount); const date=String(b.transaction_date||'');
+    if(!type||!description||!Number.isFinite(amountCents)||amountCents<=0||!dateOk(date)) return json({error:'Dados do lançamento inválidos.'},400);
+    const status=choice(b.status,PAYMENT_STATUSES,type==='entrada'?'recebido':'pago');
+    const recurringType=choice(b.recurring_type,RECURRENCE_TYPES,'nenhuma');
+    const installmentCount=Math.max(1, Number.parseInt(b.installment_count || '1', 10) || 1);
+    const installmentNumber=Math.min(installmentCount, Math.max(1, Number.parseInt(b.installment_number || '1', 10) || 1));
+    await env.DB.prepare(`UPDATE transactions SET type=?,description=?,amount_cents=?,transaction_date=?,category_id=?,payment_method=?,notes=?,status=?,recurring_type=?,installment_count=?,installment_number=?,updated_at=? WHERE id=? AND user_id=?`)
+      .bind(type,description,amountCents,date,b.category_id||null,optionalText(b.payment_method),optionalText(b.notes),status,recurringType,installmentCount,installmentNumber,nowIso(),id,user.id).run();
+    await audit(env,user.id,'update','transaction',id,{type,amountCents,date});
+    return json({ok:true});
   }
 
   if (path.startsWith('/api/transactions/') && request.method === 'DELETE') {

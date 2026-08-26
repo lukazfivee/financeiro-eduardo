@@ -1,0 +1,55 @@
+name: Publicar Financeiro Eduardo no Cloudflare
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - public/**
+      - src/**
+      - schema.sql
+      - wrangler.toml.example
+      - package.json
+      - .github/workflows/deploy-cloudflare.yml
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Validar banco e publicar aplicativo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validar segredos
+        shell: bash
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Falta CLOUDFLARE_API_TOKEN"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Falta CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          test -n "$D1_DATABASE_ID" || { echo "Falta CLOUDFLARE_D1_DATABASE_ID"; exit 1; }
+
+      - name: Gerar configuracao do Wrangler
+        shell: bash
+        run: sed "s/__D1_DATABASE_ID__/$D1_DATABASE_ID/g" wrangler.toml.example > wrangler.toml
+
+      - name: Validar JavaScript
+        run: npm run check
+
+      - name: Aplicar estrutura do banco D1
+        run: npx --yes wrangler@4.33.1 d1 execute financeiro-eduardo --remote --file=./schema.sql --config=./wrangler.toml
+
+      - name: Publicar Worker e PWA
+        run: npx --yes wrangler@4.33.1 deploy --config=./wrangler.toml

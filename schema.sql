@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS accounts_user_idx ON accounts(user_id, name);
+CREATE INDEX IF NOT EXISTS accounts_user_active_idx ON accounts(user_id, archived_at, name);
 
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
@@ -71,6 +72,8 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions(user_id, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS transactions_category_idx ON transactions(user_id, category_id);
+CREATE INDEX IF NOT EXISTS transactions_user_status_date_idx ON transactions(user_id, status, transaction_date DESC);
+CREATE INDEX IF NOT EXISTS transactions_user_account_idx ON transactions(user_id, account_id);
 
 CREATE TABLE IF NOT EXISTS service_transactions (
   id TEXT PRIMARY KEY,
@@ -99,6 +102,8 @@ CREATE TABLE IF NOT EXISTS service_transactions (
 );
 CREATE INDEX IF NOT EXISTS service_transactions_user_date_idx ON service_transactions(user_id, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS service_transactions_user_service_idx ON service_transactions(user_id, service_name);
+CREATE INDEX IF NOT EXISTS service_transactions_user_status_date_idx ON service_transactions(user_id, payment_status, transaction_date DESC);
+CREATE INDEX IF NOT EXISTS service_transactions_user_category_date_idx ON service_transactions(user_id, category, transaction_date DESC);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

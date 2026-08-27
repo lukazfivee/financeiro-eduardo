@@ -15,9 +15,11 @@ const addMonthsDate = (value, months) => {
   const next = new Date(Date.UTC(year, month - 1 + months, Math.min(day, lastDay)));
   return next.toISOString().slice(0, 10);
 };
+const monthRange = value => monthOk(value) ? { start: `${value}-01`, end: addMonthsDate(`${value}-01`, 1) } : null;
 const text = value => String(value || '').trim();
 const optionalText = value => text(value) || null;
 const choice = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+let appSchemaReady = null;
 
 async function ensureColumns(env, table, columns) {
   const existing = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
@@ -28,6 +30,11 @@ async function ensureColumns(env, table, columns) {
 }
 
 async function ensureAppSchema(env) {
+  if (!appSchemaReady) appSchemaReady = migrateAppSchema(env).catch(error => { appSchemaReady = null; throw error; });
+  return appSchemaReady;
+}
+
+async function migrateAppSchema(env) {
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -40,6 +47,7 @@ async function ensureAppSchema(env) {
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS accounts_user_idx ON accounts(user_id, name)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS accounts_user_active_idx ON accounts(user_id, archived_at, name)`).run();
   await ensureColumns(env, 'transactions', [
     { name: 'account_id', sql: `account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL` },
     { name: 'transfer_group_id', sql: `transfer_group_id TEXT` },
@@ -59,6 +67,10 @@ async function ensureAppSchema(env) {
     { name: 'installment_count', sql: `installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count >= 1)` },
     { name: 'installment_number', sql: `installment_number INTEGER NOT NULL DEFAULT 1 CHECK (installment_number >= 1)` }
   ]);
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS transactions_user_status_date_idx ON transactions(user_id, status, transaction_date DESC)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS transactions_user_account_idx ON transactions(user_id, account_id)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS service_transactions_user_status_date_idx ON service_transactions(user_id, payment_status, transaction_date DESC)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS service_transactions_user_category_date_idx ON service_transactions(user_id, category, transaction_date DESC)`).run();
 }
 
 async function ensureDefaultAccount(env, userId) {
@@ -244,13 +256,14 @@ async function api(request, env, url) {
 
   if (path === '/api/services' && request.method === 'GET') {
     const month = url.searchParams.get('month');
+    const range = monthRange(month);
     const type = url.searchParams.get('type');
     const status = url.searchParams.get('status');
     const category = url.searchParams.get('category');
     const search = text(url.searchParams.get('q'));
     let sql = `SELECT * FROM service_transactions WHERE user_id=?`;
     const binds=[user.id];
-    if (month && monthOk(month)) { sql += ` AND substr(transaction_date,1,7)=?`; binds.push(month); }
+    if (range) { sql += ` AND transaction_date>=? AND transaction_date<?`; binds.push(range.start, range.end); }
     if (['entrada','saida'].includes(type)) { sql += ` AND type=?`; binds.push(type); }
     if (PAYMENT_STATUSES.includes(status)) { sql += ` AND payment_status=?`; binds.push(status); }
     if (category) { sql += ` AND category=?`; binds.push(category); }
@@ -316,10 +329,12 @@ async function api(request, env, url) {
 
   if (path === '/api/services/dashboard' && request.method === 'GET') {
     const month=url.searchParams.get('month') || new Date().toISOString().slice(0,7);
-    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN service_status IN ('em_execucao','em_andamento','aguardando_pagamento','aprovado') THEN service_name END) servicos_em_andamento, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=?`).bind(user.id,month).first();
+    const range=monthRange(month);
+    if(!range) return json({error:'Mês inválido.'},400);
+    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN service_status IN ('em_execucao','em_andamento','aguardando_pagamento','aprovado') THEN service_name END) servicos_em_andamento, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<?`).bind(user.id,range.start,range.end).first();
     const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) resultado FROM service_transactions WHERE user_id=?`).bind(user.id).first();
-    const serviceMetrics=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=? GROUP BY service_name`).bind(user.id,month).all();
-    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(MAX(service_status),'em_execucao') service_status, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND substr(transaction_date,1,7)=? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,month).all();
+    const serviceMetrics=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<? GROUP BY service_name`).bind(user.id,range.start,range.end).all();
+    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(MAX(service_status),'em_execucao') service_status, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,range.start,range.end).all();
     const lucro=(summary?.receitas||0)-(summary?.custos||0);
     const metrics=(serviceMetrics.results||[]).reduce((a,x)=>({contratado:a.contratado+Number(x.contratado_cents||0),recebido:a.recebido+Number(x.recebido_cents||0),custo_previsto:a.custo_previsto+Number(x.custo_previsto_cents||0),custo_realizado:a.custo_realizado+Number(x.custo_realizado_cents||0)}),{contratado:0,recebido:0,custo_previsto:0,custo_realizado:0});
     return json({month,receitas_cents:summary?.receitas||0,custos_cents:summary?.custos||0,lucro_cents:lucro,margem_percent:(summary?.receitas||0)?(lucro/(summary?.receitas||1))*100:0,resultado_total_cents:total?.resultado||0,contratado_cents:metrics.contratado,recebido_cents:metrics.recebido,a_receber_cents:Math.max(0,metrics.contratado-metrics.recebido),custo_previsto_cents:metrics.custo_previsto,custo_realizado_cents:metrics.custo_realizado,servicos:summary?.servicos||0,servicos_em_andamento:summary?.servicos_em_andamento||0,clientes:summary?.clientes||0,by_service:byService.results||[]});
@@ -327,13 +342,14 @@ async function api(request, env, url) {
 
   if (path === '/api/transactions' && request.method === 'GET') {
     const month = url.searchParams.get('month');
+    const range = monthRange(month);
     const type = url.searchParams.get('type');
     const status = url.searchParams.get('status');
     const category = url.searchParams.get('category_id');
     const search = text(url.searchParams.get('q'));
     let sql = `SELECT t.*, c.name category_name, c.icon category_icon, a.name account_name FROM transactions t LEFT JOIN categories c ON c.id=t.category_id LEFT JOIN accounts a ON a.id=t.account_id WHERE t.user_id=?`;
     const binds=[user.id];
-    if (month && monthOk(month)) { sql += ` AND substr(t.transaction_date,1,7)=?`; binds.push(month); }
+    if (range) { sql += ` AND t.transaction_date>=? AND t.transaction_date<?`; binds.push(range.start, range.end); }
     if (['entrada','saida'].includes(type)) { sql += ` AND t.type=?`; binds.push(type); }
     if (PAYMENT_STATUSES.includes(status)) { sql += ` AND t.status=?`; binds.push(status); }
     if (category) { sql += ` AND t.category_id=?`; binds.push(category); }
@@ -385,9 +401,11 @@ async function api(request, env, url) {
 
   if (path === '/api/dashboard' && request.method === 'GET') {
     const month=url.searchParams.get('month') || new Date().toISOString().slice(0,7);
-    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) entradas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) saidas FROM transactions WHERE user_id=? AND substr(transaction_date,1,7)=?`).bind(user.id,month).first();
+    const range=monthRange(month);
+    if(!range) return json({error:'Mês inválido.'},400);
+    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) entradas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) saidas FROM transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<?`).bind(user.id,range.start,range.end).first();
     const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) saldo FROM transactions WHERE user_id=?`).bind(user.id).first();
-    const byCat=await env.DB.prepare(`SELECT COALESCE(c.name,'Sem categoria') name, COALESCE(c.icon,'📁') icon, SUM(t.amount_cents) total_cents FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=? AND t.type='saida' AND substr(t.transaction_date,1,7)=? GROUP BY c.id,c.name,c.icon ORDER BY total_cents DESC LIMIT 8`).bind(user.id,month).all();
+    const byCat=await env.DB.prepare(`SELECT COALESCE(c.name,'Sem categoria') name, COALESCE(c.icon,'📁') icon, SUM(t.amount_cents) total_cents FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=? AND t.type='saida' AND t.transaction_date>=? AND t.transaction_date<? GROUP BY c.id,c.name,c.icon ORDER BY total_cents DESC LIMIT 8`).bind(user.id,range.start,range.end).all();
     const byAccount=await env.DB.prepare(`SELECT a.id,a.name,a.type,a.opening_balance_cents + COALESCE(SUM(CASE WHEN t.type='entrada' THEN t.amount_cents ELSE -t.amount_cents END),0) balance_cents FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id AND t.user_id=a.user_id WHERE a.user_id=? AND a.archived_at IS NULL GROUP BY a.id ORDER BY a.name`).bind(user.id).all();
     return json({month,entradas_cents:summary?.entradas||0,saidas_cents:summary?.saidas||0,saldo_mes_cents:(summary?.entradas||0)-(summary?.saidas||0),saldo_total_cents:total?.saldo||0,expenses_by_category:byCat.results||[],accounts:byAccount.results||[]});
   }

@@ -119,7 +119,7 @@
     const modal=document.querySelector('#serviceDetailModal');document.querySelector('#closeServiceDetail').onclick=()=>modal.remove();document.querySelector('#editServiceFromDetail').onclick=()=>{modal.remove();openServiceModal(tx);};modal.onclick=e=>{if(e.target===modal)modal.remove();};
   }
 
-  const observer=new MutationObserver(()=>ensureUi());observer.observe(document.body,{childList:true,subtree:true});ensureUi();
   window.__openServices=openServices;
   window.__initServices=ensureUi;
+  ensureUi();
 })();

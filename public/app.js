@@ -205,7 +205,7 @@ function renderApp(){
     <aside class="sidebar">
       <div class="sidebar-brand"><div class="brand-mark">R$</div><div><strong>Financeiro</strong><span>Eduardo</span></div></div>
       <nav class="sidebar-nav">
-        <button class="nav-item active">${icon('home')}<span>Visão geral</span></button>
+        <button class="nav-item active" id="navHome">${icon('home')}<span>Visão geral</span></button>
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
         <button class="nav-item" id="navCategories">${icon('chart')}<span>Categorias</span></button>
         <button class="nav-item" id="navSettings"><span class="ui-icon">⚙</span><span>Configurações</span></button>
@@ -267,9 +267,10 @@ function renderApp(){
 
   document.querySelector('#printBtn').onclick=printReport;
   document.querySelector('#setBudgetBtn').onclick=openBudgetModal;
+  if(typeof window.__initServices==='function') window.__initServices();
   document.querySelector('#navSettings').onclick=()=>{document.body.className='settings-mode';document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));document.querySelector('#navSettings').classList.add('active');};
   document.querySelector('#mobileNavHome').onclick=()=>{document.querySelector('#navHome').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavHome').classList.add('active');};
-  document.querySelector('#mobileNavTx').onclick=()=>{document.querySelector('#navTx').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavTx').classList.add('active');};
+  document.querySelector('#mobileNavTx').onclick=()=>{document.querySelector('#navTransactions').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavTx').classList.add('active');};
   document.querySelector('#mobileNavServices').onclick=()=>{document.querySelector('#navServices').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavServices').classList.add('active');};
   document.querySelector('#mobileNavSettings').onclick=()=>{document.querySelector('#navSettings').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavSettings').classList.add('active');};
   document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch(apiUrl('/api/backup'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
@@ -285,7 +286,6 @@ function renderApp(){
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openDetails(state.transactions.find(t=>t.id===b.dataset.detail)));
   document.querySelectorAll('[data-account-edit]').forEach(b=>b.onclick=()=>openAccountModal(state.accounts.find(a=>a.id===b.dataset.accountEdit)));
   document.querySelectorAll('[data-category-edit]').forEach(b=>b.onclick=()=>openCategoryModal(state.categories.find(c=>c.id===b.dataset.categoryEdit)));
-  if(typeof window.__initServices==='function') window.__initServices();
 }
 
 function filterCategoryOptions(type){

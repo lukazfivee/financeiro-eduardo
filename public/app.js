@@ -174,8 +174,7 @@ function renderApp(){
         <button class="nav-item active">${icon('home')}<span>Visão geral</span></button>
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
         <button class="nav-item" id="navCategories">${icon('chart')}<span>Categorias</span></button>
-        <button class="nav-item" id="navServices"><span class="ui-icon">▣</span><span>Serviços</span></button>
-          <button class="nav-item" id="navSettings"><span class="ui-icon">⚙</span><span>Configurações</span></button>
+        <button class="nav-item" id="navSettings"><span class="ui-icon">⚙</span><span>Configurações</span></button>
       </nav>
       <div class="sidebar-foot">
         <div class="user-avatar">${esc((state.user?.name||'E').trim().charAt(0).toUpperCase())}</div>
@@ -192,6 +191,7 @@ function renderApp(){
       <section class="dashboard-grid">
         <article class="panel">${overviewHtml()}</article>
             <article class="panel">${historyChartHtml(state.history)}</article>
+        <article class="panel"><div class="panel-head"><h2>Metas e Orçamento</h2><button class="btn secondary" id="setBudgetBtn">+ Definir</button></div>${budgetHtml()}</article>
         <article class="panel" id="categoriesSection"><div class="panel-head"><div><span class="eyebrow">DESPESAS</span><h2>Por categoria</h2></div><button id="newCategoryBtn" class="btn secondary">+ Categoria</button></div>${categoriesHtml()}</article>
       </section>
       <section class="dashboard-grid">

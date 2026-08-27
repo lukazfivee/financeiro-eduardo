@@ -61,6 +61,7 @@ if (LOCAL) {
 
 app.whenReady().then(() => {
   session.defaultSession.clearCache().catch(() => {});
+  session.defaultSession.clearStorageData({ storages: ['serviceworkers'] }).catch(() => {});
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

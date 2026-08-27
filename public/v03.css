@@ -1,0 +1,92 @@
+/* === Financeiro Eduardo v0.3.0 === */
+
+/* Toast notifications */
+.toast-container{position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-radius:.75rem;background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);box-shadow:0 4px 24px rgba(0,0,0,.12);font-size:.875rem;animation:toastIn .3s ease;max-width:380px}
+.toast.success{border-left:4px solid #22c55e}.toast.error{border-left:4px solid #ef4444}.toast.info{border-left:4px solid #3b82f6}
+.toast .toast-icon{font-size:1.25rem;flex-shrink:0}
+.toast .toast-msg{flex:1}
+.toast .toast-close{background:none;border:none;cursor:pointer;color:var(--muted,#9ca3af);font-size:1rem;padding:0 .25rem}
+@keyframes toastIn{from{opacity:0;transform:translateX(1rem)}to{opacity:1;transform:none}}
+@keyframes toastOut{from{opacity:1;transform:none}to{opacity:0;transform:translateX(1rem)}}
+
+/* History chart */
+.history-chart{padding:1.5rem}
+.history-chart .chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
+.history-chart .chart-head h3{margin:0;font-size:1rem}
+.history-bars{display:flex;align-items:flex-end;gap:.5rem;height:180px;padding-top:.5rem}
+.history-bar-group{flex:1;display:flex;flex-direction:column;align-items:center;gap:.25rem;height:100%}
+.history-bar-pair{display:flex;gap:2px;align-items:flex-end;flex:1;width:100%}
+.history-bar{flex:1;border-radius:.25rem .25rem 0 0;min-height:4px;transition:height .4s ease}
+.history-bar.income{background:linear-gradient(180deg,#22c55e,#16a34a)}
+.history-bar.expense{background:linear-gradient(180deg,#ef4444,#dc2626)}
+.history-bar-label{font-size:.65rem;color:var(--muted,#9ca3af);white-space:nowrap;text-transform:capitalize}
+.history-legend{display:flex;gap:1rem;justify-content:center;margin-top:.75rem;font-size:.75rem;color:var(--muted,#9ca3af)}
+.history-legend span{display:flex;align-items:center;gap:.35rem}
+.history-legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+/* Budget panel */
+.budget-list{display:flex;flex-direction:column;gap:.5rem;padding:.5rem 0}
+.budget-row{display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;border-radius:.5rem;background:var(--bg,#f5f7fb)}
+.budget-info{flex:1;min-width:0}
+.budget-info strong{font-size:.875rem;display:block;margin-bottom:.15rem}
+.budget-info small{color:var(--muted,#9ca3af);font-size:.75rem}
+.budget-progress{width:100%;height:6px;background:var(--line,#e5e7eb);border-radius:3px;overflow:hidden;margin-top:.35rem}
+.budget-progress span{display:block;height:100%;border-radius:3px;transition:width .4s ease}
+.budget-progress .under{background:#22c55e}
+.budget-progress .warn{background:#f59e0b}
+.budget-progress .over{background:#ef4444}
+.budget-values{text-align:right;flex-shrink:0}
+.budget-values strong{font-size:.875rem}
+.budget-values small{display:block;color:var(--muted,#9ca3af);font-size:.7rem}
+
+/* Settings / Config page */
+.settings-page{display:none;padding:2rem}
+.service-mode .settings-page,.config-mode .settings-page{display:none}
+.settings-mode .settings-page{display:block}
+.settings-mode .kpi-grid,.settings-mode .dashboard-grid,.settings-mode .transactions-panel,.settings-mode .services-page{display:none}
+.settings-card{background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);border-radius:1rem;padding:1.5rem;margin-bottom:1rem}
+.settings-card h3{margin:0 0 .5rem;font-size:1rem}
+.settings-card p{color:var(--muted,#9ca3af);font-size:.875rem;margin:0 0 1rem}
+.settings-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+
+/* Print styles */
+.print-overlay{position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;padding:2rem}
+.print-overlay .print-header{text-align:center;margin-bottom:2rem;border-bottom:2px solid #333;padding-bottom:1rem}
+.print-overlay .print-header h1{font-size:1.5rem;margin:0}
+.print-overlay .print-header p{color:#666;margin:.25rem 0 0}
+.print-overlay .print-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+.print-overlay .print-kpi{text-align:center;padding:1rem;border:1px solid #ddd;border-radius:.5rem}
+.print-overlay .print-kpi strong{display:block;font-size:1.25rem}
+.print-overlay .print-kpi small{color:#666}
+.print-overlay table{width:100%;border-collapse:collapse;font-size:.8rem}
+.print-overlay th,.print-overlay td{border:1px solid #ddd;padding:.4rem .6rem;text-align:left}
+.print-overlay th{background:#f5f5f5;font-weight:600}
+.print-overlay .print-actions{position:fixed;top:1rem;right:1rem;display:flex;gap:.5rem}
+@media print{.print-actions{display:none!important}.print-overlay{position:static;padding:0}}
+
+/* Loading skeleton */
+.skeleton{background:linear-gradient(90deg,var(--line,#e5e7eb) 25%,var(--bg,#f5f7fb) 50%,var(--line,#e5e7eb) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:.5rem}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skeleton-kpi{height:120px;border-radius:1rem}
+.skeleton-panel{height:250px;border-radius:1rem}
+.skeleton-table{height:300px;border-radius:1rem}
+
+/* Mobile bottom nav */
+@media(max-width:780px){
+  .mobile-bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--panel,#fff);border-top:1px solid var(--line,#e5e7eb);display:flex;justify-content:space-around;padding:.4rem 0 calc(.4rem + env(safe-area-inset-bottom,0));box-shadow:0 -2px 12px rgba(0,0,0,.08)}
+  .mobile-bottom-nav button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:.15rem;font-size:.65rem;color:var(--muted,#9ca3af);cursor:pointer;padding:.25rem .5rem;border-radius:.5rem;transition:color .2s}
+  .mobile-bottom-nav button.active{color:var(--accent,#6366f1)}
+  .mobile-bottom-nav .nav-icon{font-size:1.25rem}
+  .main-content{padding-bottom:4.5rem!important}
+}
+@media(min-width:781px){
+  .mobile-bottom-nav{display:none}
+}
+
+/* Confirm dialog */
+.confirm-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.confirm-card{background:var(--panel,#fff);border-radius:1rem;padding:1.5rem;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.confirm-card h3{margin:0 0 .5rem;font-size:1rem}
+.confirm-card p{color:var(--muted,#9ca3af);font-size:.875rem;margin:0 0 1.25rem}
+.confirm-card .confirm-actions{display:flex;gap:.5rem;justify-content:flex-end}

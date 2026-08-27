@@ -105,6 +105,19 @@ CREATE INDEX IF NOT EXISTS service_transactions_user_service_idx ON service_tran
 CREATE INDEX IF NOT EXISTS service_transactions_user_status_date_idx ON service_transactions(user_id, payment_status, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS service_transactions_user_category_date_idx ON service_transactions(user_id, category, transaction_date DESC);
 
+CREATE TABLE IF NOT EXISTS budgets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  category_id TEXT,
+  month TEXT NOT NULL,
+  limit_cents INTEGER NOT NULL DEFAULT 0 CHECK (limit_cents >= 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS budgets_user_month_idx ON budgets(user_id, month);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT,

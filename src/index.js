@@ -71,6 +71,18 @@ async function migrateAppSchema(env) {
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS transactions_user_account_idx ON transactions(user_id, account_id)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS service_transactions_user_status_date_idx ON service_transactions(user_id, payment_status, transaction_date DESC)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS service_transactions_user_category_date_idx ON service_transactions(user_id, category, transaction_date DESC)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS budgets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    category_id TEXT,
+    month TEXT NOT NULL,
+    limit_cents INTEGER NOT NULL DEFAULT 0 CHECK (limit_cents >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS budgets_user_month_idx ON budgets(user_id, month)`).run();
 }
 
 async function ensureDefaultAccount(env, userId) {
@@ -407,7 +419,8 @@ async function api(request, env, url) {
     const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) saldo FROM transactions WHERE user_id=?`).bind(user.id).first();
     const byCat=await env.DB.prepare(`SELECT COALESCE(c.name,'Sem categoria') name, COALESCE(c.icon,'📁') icon, SUM(t.amount_cents) total_cents FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=? AND t.type='saida' AND t.transaction_date>=? AND t.transaction_date<? GROUP BY c.id,c.name,c.icon ORDER BY total_cents DESC LIMIT 8`).bind(user.id,range.start,range.end).all();
     const byAccount=await env.DB.prepare(`SELECT a.id,a.name,a.type,a.opening_balance_cents + COALESCE(SUM(CASE WHEN t.type='entrada' THEN t.amount_cents ELSE -t.amount_cents END),0) balance_cents FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id AND t.user_id=a.user_id WHERE a.user_id=? AND a.archived_at IS NULL GROUP BY a.id ORDER BY a.name`).bind(user.id).all();
-    return json({month,entradas_cents:summary?.entradas||0,saidas_cents:summary?.saidas||0,saldo_mes_cents:(summary?.entradas||0)-(summary?.saidas||0),saldo_total_cents:total?.saldo||0,expenses_by_category:byCat.results||[],accounts:byAccount.results||[]});
+    const budgetRows = await env.DB.prepare(`SELECT b.*, c.name category_name, c.icon category_icon FROM budgets b LEFT JOIN categories c ON c.id=b.category_id WHERE b.user_id=? AND b.month=?`).bind(user.id, month).all();
+    return json({month,entradas_cents:summary?.entradas||0,saidas_cents:summary?.saidas||0,saldo_mes_cents:(summary?.entradas||0)-(summary?.saidas||0),saldo_total_cents:total?.saldo||0,expenses_by_category:byCat.results||[],accounts:byAccount.results||[],budgets:budgetRows.results||[]});
   }
 
   if (path === '/api/export.csv' && request.method === 'GET') {
@@ -415,6 +428,75 @@ async function api(request, env, url) {
     const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
     const lines=['Data;Tipo;Descrição;Valor;Forma de pagamento;Observações',...(r.results||[]).map(x=>[x.transaction_date,x.type,x.description,(x.amount_cents/100).toFixed(2).replace('.',','),x.payment_method,x.notes].map(esc).join(';'))];
     return new Response(lines.join('\n'),{headers:{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="financeiro-eduardo.csv"'}});
+  }
+
+  if (path === '/api/dashboard/history' && request.method === 'GET') {
+    const monthsParam = Number(url.searchParams.get('months')) || 6;
+    const months = Math.min(Math.max(monthsParam, 2), 12);
+    const now = new Date();
+    const result = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = d.toISOString().slice(0, 7);
+      const range = monthRange(m);
+      if (!range) continue;
+      const row = await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) entradas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) saidas FROM transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<?`).bind(user.id, range.start, range.end).first();
+      result.push({ month: m, entradas_cents: row?.entradas || 0, saidas_cents: row?.saidas || 0, saldo_cents: (row?.entradas || 0) - (row?.saidas || 0) });
+    }
+    return json({ items: result });
+  }
+
+  if (path === '/api/budgets' && request.method === 'GET') {
+    const month = url.searchParams.get('month') || new Date().toISOString().slice(0, 7);
+    const r = await env.DB.prepare(`SELECT b.*, c.name category_name, c.icon category_icon FROM budgets b LEFT JOIN categories c ON c.id=b.category_id WHERE b.user_id=? AND b.month=? ORDER BY c.name`).bind(user.id, month).all();
+    return json({ items: r.results || [] });
+  }
+
+  if (path === '/api/budgets' && request.method === 'POST') {
+    const b = await body(request);
+    const month = String(b.month || '').trim();
+    const limitCents = cents(b.limit);
+    if (!monthOk(month) || !Number.isFinite(limitCents) || limitCents <= 0) return json({ error: 'Informe mês e limite válidos.' }, 400);
+    const existing = await env.DB.prepare(`SELECT id FROM budgets WHERE user_id=? AND month=? AND category_id IS ?`).bind(user.id, month, b.category_id || null).first();
+    if (existing) {
+      await env.DB.prepare(`UPDATE budgets SET limit_cents=?,updated_at=? WHERE id=?`).bind(limitCents, nowIso(), existing.id).run();
+      await audit(env, user.id, 'update', 'budget', existing.id, { month, limitCents }); return json({ ok: true, id: existing.id });
+    }
+    const id = uid(), ts = nowIso();
+    await env.DB.prepare(`INSERT INTO budgets(id,user_id,category_id,month,limit_cents,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`).bind(id, user.id, b.category_id || null, month, limitCents, ts, ts).run();
+    await audit(env, user.id, 'create', 'budget', id, { month, limitCents }); return json({ ok: true, id }, 201);
+  }
+
+  if (path.startsWith('/api/budgets/') && request.method === 'DELETE') {
+    const id = path.split('/').pop();
+    const found = await env.DB.prepare(`SELECT id FROM budgets WHERE id=? AND user_id=?`).bind(id, user.id).first();
+    if (!found) return json({ error: 'Orçamento não encontrado.' }, 404);
+    await env.DB.prepare(`DELETE FROM budgets WHERE id=? AND user_id=?`).bind(id, user.id).run();
+    await audit(env, user.id, 'delete', 'budget', id); return json({ ok: true });
+  }
+
+  if (path === '/api/backup' && request.method === 'GET') {
+    const [cats, accts, txs, svcs, budgets, auditRows] = await Promise.all([
+      env.DB.prepare(`SELECT * FROM categories WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM accounts WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM transactions WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM service_transactions WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM budgets WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM audit_log WHERE user_id=? ORDER BY id DESC LIMIT 500`).bind(user.id).all()
+    ]);
+    const data = {
+      version: '0.3.0',
+      exported_at: nowIso(),
+      categories: cats.results || [],
+      accounts: accts.results || [],
+      transactions: txs.results || [],
+      service_transactions: svcs.results || [],
+      budgets: budgets.results || [],
+      audit_log: auditRows.results || []
+    };
+    return new Response(JSON.stringify(data, null, 2), {
+      headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="financeiro-eduardo-backup.json"' }
+    });
   }
 
   return json({error:'Rota não encontrada.'},404);

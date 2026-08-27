@@ -1,4 +1,4 @@
-name: Criar Release Financeiro Eduardo 0.2.0
+name: Criar Release Financeiro Eduardo 0.3.0
 
 on:
   workflow_dispatch:
@@ -18,16 +18,16 @@ jobs:
       - name: Baixar codigo
         uses: actions/checkout@v6
 
-      - name: Criar release v0.2.0
+      - name: Criar release v0.3.0
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
-            echo "Release v0.2.0 ja existe."
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            echo "Release v0.3.0 ja existe."
           else
-            gh release create v0.2.0 \
+            gh release create v0.3.0 \
               --target main \
-              --title "Financeiro Eduardo v0.2.0" \
-              --notes "## Financeiro Eduardo v0.2.0\n\nNova versao do sistema financeiro com interface renovada e novos modulos.\n\n### Novidades\n- Dashboard financeiro moderno e responsivo\n- Modo claro e modo noturno com preferencia salva\n- Modulo Servicos separado do financeiro pessoal\n- Receitas e custos profissionais independentes\n- Resultado e lucro por servico\n- Controle por cliente e nome do servico\n- Historico profissional separado\n- Integracao com Cloudflare Worker e D1\n- Suporte a Windows via aplicativo desktop\n\n### Plataforma\nWindows, navegador e PWA compartilham os mesmos dados hospedados no Cloudflare D1.\n\nO executavel do Windows sera anexado a esta release assim que a compilacao da versao 0.2.0 for concluida."
+              --title "Financeiro Eduardo v0.3.0" \
+              --notes "## Financeiro Eduardo v0.3.0\n\nAtualização com gráficos históricos, orçamentos, backup, impressão e melhorias de UX.\n\n### Novidades\n- Gráfico de barras com evolução financeira dos últimos 6 meses\n- Sistema de orçamento mensal por categoria com barras de progresso\n- Backup completo dos dados em JSON\n- Impressão de relatório mensal formatado\n- Notificações toast (substituindo alertas nativos)\n- Diálogos de confirmação estilizados\n- Navegação mobile com barra inferior\n- Seção de Configurações com backup e restauração\n- Ícone PWA do Financeiro Eduardo\n- Skeleton loading durante carregamento\n\n### Plataforma\nWindows, navegador e PWA compartilham os mesmos dados hospedados no Cloudflare D1.\n\nO executável do Windows será anexado a esta release assim que a compilação da versão 0.3.0 for concluída."
           fi

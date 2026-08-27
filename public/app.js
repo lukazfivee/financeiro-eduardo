@@ -8,7 +8,7 @@ const amountValue=c=>((Number(c)||0)/100).toFixed(2);
 const statusLabel=s=>({pendente:'Pendente',pago:'Pago',recebido:'Recebido',atrasado:'Atrasado'}[s]||'Pago');
 const accountTypeLabel=s=>({carteira:'Carteira',conta_corrente:'Conta corrente',poupanca:'Poupança',cartao:'Cartão',dinheiro:'Dinheiro',investimento:'Investimento'}[s]||'Carteira');
 let token=localStorage.getItem('financeiro_token')||'';
-let state={user:null,categories:[],accounts:[],transactions:[],dashboard:null,month:currentMonth(),filters:{type:'',category_id:'',status:'',q:''}};
+let state={user:null,categories:[],accounts:[],transactions:[],dashboard:null,month:currentMonth(),filters:{type:'',category_id:'',status:'',q:''}, history:[], dashboard:{budgets:[],expenses_by_category:[]}};
 
 async function api(path,opts={}){
   const headers={'content-type':'application/json',...(opts.headers||{})};
@@ -25,6 +25,11 @@ function icon(type){
   const icons={wallet:'R$',up:'↑',down:'↓',trend:'↗',plus:'+',home:'⌂',list:'≡',chart:'◫',export:'⇩',logout:'↪'};
   return `<span class="ui-icon">${icons[type]||''}</span>`;
 }
+
+function ensureToastContainer(){if(!document.querySelector('.toast-container')){document.body.insertAdjacentHTML('beforeend','<div class="toast-container"></div>');} return document.querySelector('.toast-container');}
+function toast(msg,type='success',duration=3000){const c=ensureToastContainer();const icons={success:'✓',error:'✗',info:'ℹ'};const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span class="toast-icon">${icons[type]||'ℹ'}</span><span class="toast-msg">${esc(msg)}</span><button class="toast-close">×</button>`;c.appendChild(el);el.querySelector('.toast-close').onclick=()=>{el.style.animation='toastOut .3s ease forwards';setTimeout(()=>el.remove(),300);};setTimeout(()=>{if(el.parentNode){el.style.animation='toastOut .3s ease forwards';setTimeout(()=>el.remove(),300);}},duration);}
+function confirmDialog(msg){return new Promise(resolve=>{document.body.insertAdjacentHTML('beforeend',`<div class="confirm-overlay"><div class="confirm-card"><h3>Confirmação</h3><p>${esc(msg)}</p><div class="confirm-actions"><button class="btn secondary" id="confirmNo">Cancelar</button><button class="btn primary" id="confirmYes">Confirmar</button></div></div></div>`);const overlay=document.querySelector('.confirm-overlay');document.querySelector('#confirmNo').onclick=()=>{overlay.remove();resolve(false);};document.querySelector('#confirmYes').onclick=()=>{overlay.remove();resolve(true);};overlay.onclick=e=>{if(e.target===overlay){overlay.remove();resolve(false);}};});}
+
 
 function loginTemplate(configured){
   return `<main class="auth-page">
@@ -78,10 +83,10 @@ async function load(){
   if(state.filters.category_id)qs.set('category_id',state.filters.category_id);
   if(state.filters.status)qs.set('status',state.filters.status);
   if(state.filters.q)qs.set('q',state.filters.q);
-  const [me,cats,tx,dash]=await Promise.all([
-    api('/api/me'),api('/api/categories'),api(`/api/transactions?${qs}`),api(`/api/dashboard?month=${state.month}`)
+  const [me,cats,tx,dash,hist]=await Promise.all([
+    api('/api/me'),api('/api/categories'),api(`/api/transactions?${qs}`),api(`/api/dashboard?month=${state.month}`),api('/api/dashboard/history?months=6')
   ]);
-  state.user=me.user;state.categories=cats.items;state.accounts=dash.accounts||[];state.transactions=tx.items;state.dashboard=dash;
+  state.user=me.user;state.categories=cats.items;state.accounts=dash.accounts||[];state.transactions=tx.items;state.dashboard=dash;state.history=hist.items||[];
 }
 
 function kpisHtml(){
@@ -136,6 +141,30 @@ function overviewHtml(){
   </div>`;
 }
 
+function historyChartHtml(history){
+  if(!history||!history.length)return '';
+  const max=Math.max(...history.map(h=>Math.max(h.entradas_cents,h.saidas_cents)),1);
+  const monthShort=v=>{if(!v)return'';const [y,m]=v.split('-');return new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(new Date(Number(y),Number(m)-1,1));};
+  return `<div class="history-chart"><div class="chart-head"><div><span class="eyebrow">EVOLUÇÃO</span><h3>Últimos ${history.length} meses</h3></div></div><div class="history-bars">${history.map(h=>{const inH=Math.max(4,Math.round(h.entradas_cents/max*160));const outH=Math.max(4,Math.round(h.saidas_cents/max*160));return `<div class="history-bar-group"><div class="history-bar-pair"><div class="history-bar income" style="height:${inH}px" title="Entradas: ${money(h.entradas_cents)}"></div><div class="history-bar expense" style="height:${outH}px" title="Saídas: ${money(h.saidas_cents)}"></div></div><span class="history-bar-label">${monthShort(h.month)}</span></div>`;}).join('')}</div><div class="history-legend"><span><span class="dot income-dot" style="background:#22c55e"></span>Entradas</span><span><span class="dot expense-dot" style="background:#ef4444"></span>Saídas</span></div></div>`;
+}
+function budgetHtml(){
+  const budgets=state.dashboard?.budgets||[];const expenses=state.dashboard?.expenses_by_category||[];
+  if(!budgets.length)return `<div class="mini-empty"><span>🎯</span><p>Nenhum orçamento definido para ${monthLabel(state.month)}.</p></div>`;
+  return `<div class="budget-list">${budgets.map(b=>{const catExpense=expenses.find(e=>e.name===(b.category_name||'Sem categoria'));const spent=catExpense?Number(catExpense.total_cents||0):0;const limit=Number(b.limit_cents||0);const pct=limit?Math.round(spent/limit*100):0;const barClass=pct>=100?'over':pct>=75?'warn':'under';return `<div class="budget-row"><div class="budget-info"><strong>${esc((b.category_icon||'📁')+' '+(b.category_name||'Geral'))}</strong><div class="budget-progress"><span class="${barClass}" style="width:${Math.min(100,pct)}%"></span></div><small>${pct}% utilizado</small></div><div class="budget-values"><strong>${money(spent)}</strong><small>de ${money(limit)}</small></div></div>`;}).join('')}</div>`;
+}
+function printReport(){
+  const d=state.dashboard||{};const txs=state.transactions||[];
+  const html=`<div class="print-overlay" id="printOverlay"><div class="print-actions"><button class="btn primary" onclick="window.print()">🖨️ Imprimir</button><button class="btn secondary" onclick="document.querySelector('#printOverlay').remove()">✕ Fechar</button></div><div class="print-header"><h1>Financeiro Eduardo</h1><p>Relatório de ${monthLabel(state.month)}</p></div><div class="print-kpis"><div class="print-kpi"><strong>${money(d.entradas_cents)}</strong><small>Entradas</small></div><div class="print-kpi"><strong>${money(d.saidas_cents)}</strong><small>Saídas</small></div><div class="print-kpi"><strong>${money(d.saldo_mes_cents)}</strong><small>Resultado</small></div><div class="print-kpi"><strong>${money(d.saldo_total_cents)}</strong><small>Saldo total</small></div></div><table><thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Status</th><th>Valor</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td><td>${esc(t.description)}</td><td>${t.type==='entrada'?'Entrada':'Saída'}</td><td>${esc(t.category_name||'Sem categoria')}</td><td>${statusLabel(t.status)}</td><td style="text-align:right">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td></tr>`).join('')}</tbody></table></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+function openBudgetModal(){
+  const options=state.categories.filter(c=>c.type==='saida'||c.type==='ambos').map(c=>`<option value="${c.id}">${esc((c.icon||'')+' '+c.name)}</option>`).join('');
+  document.body.insertAdjacentHTML('beforeend',`<div id="budgetModal" class="modal"><div class="modal-card"><div class="modal-head"><div><span class="eyebrow">ORÇAMENTO</span><h2>Definir orçamento mensal</h2><p>Defina um limite de gasto por categoria para ${monthLabel(state.month)}.</p></div><button class="modal-close" id="closeBudget">×</button></div><form id="budgetForm" class="form"><input type="hidden" name="month" value="${state.month}"><label class="field"><span>Categoria</span><select name="category_id"><option value="">Geral (todas)</option>${options}</select></label><label class="field"><span>Limite mensal</span><div class="money-input"><b>R$</b><input name="limit" type="number" min="0.01" step="0.01" placeholder="0,00" required></div></label><div id="budgetError" class="error full"></div><div class="modal-actions full"><button class="btn secondary" type="button" id="cancelBudget">Cancelar</button><button class="btn primary" type="submit">Salvar orçamento</button></div></form></div></div>`);
+  const modal=document.querySelector('#budgetModal');const close=()=>modal.remove();document.querySelector('#closeBudget').onclick=close;document.querySelector('#cancelBudget').onclick=close;
+  document.querySelector('#budgetForm').onsubmit=async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget).entries());try{await api('/api/budgets',{method:'POST',body:JSON.stringify(payload)});close();toast('Orçamento salvo!','success');await refresh();}catch(ex){document.querySelector('#budgetError').textContent=ex.message;}};
+}
+
+
 function renderApp(){
   const categoryFilterOptions=state.categories.map(c=>`<option value="${c.id}" ${state.filters.category_id===c.id?'selected':''}>${esc((c.icon||'')+' '+c.name)}</option>`).join('');
   app.innerHTML=`<div class="app-shell">
@@ -146,6 +175,7 @@ function renderApp(){
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
         <button class="nav-item" id="navCategories">${icon('chart')}<span>Categorias</span></button>
         <button class="nav-item" id="navServices"><span class="ui-icon">▣</span><span>Serviços</span></button>
+          <button class="nav-item" id="navSettings"><span class="ui-icon">⚙</span><span>Configurações</span></button>
       </nav>
       <div class="sidebar-foot">
         <div class="user-avatar">${esc((state.user?.name||'E').trim().charAt(0).toUpperCase())}</div>
@@ -161,19 +191,36 @@ function renderApp(){
       ${kpisHtml()}
       <section class="dashboard-grid">
         <article class="panel">${overviewHtml()}</article>
+            <article class="panel">${historyChartHtml(state.history)}</article>
         <article class="panel" id="categoriesSection"><div class="panel-head"><div><span class="eyebrow">DESPESAS</span><h2>Por categoria</h2></div><button id="newCategoryBtn" class="btn secondary">+ Categoria</button></div>${categoriesHtml()}</article>
       </section>
       <section class="dashboard-grid">
         <article class="panel" id="accountsSection"><div class="panel-head"><div><span class="eyebrow">CARTEIRAS</span><h2>Contas</h2></div><div class="panel-actions"><button id="transferBtn" class="btn secondary">Transferir</button><button id="newAccountBtn" class="btn secondary">+ Conta</button></div></div>${accountsHtml()}</article>
       </section>
       <section class="panel transactions-panel" id="transactionsSection">
-        <div class="panel-head"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2></div><div class="panel-actions"><span class="record-count">${state.transactions.length} ${state.transactions.length===1?'lançamento':'lançamentos'}</span><button id="exportBtn" class="btn secondary">${icon('export')} Exportar CSV</button></div></div>
+        <div class="panel-head"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2></div><div class="panel-actions"><span class="record-count">${state.transactions.length} ${state.transactions.length===1?'lançamento':'lançamentos'}</span><button id="exportBtn" class="btn secondary">${icon('export')} Exportar CSV</button>
+              <button id="printBtn" class="btn secondary">🖨️ Imprimir</button></div></div>
         <div class="filter-bar"><input id="filterSearch" placeholder="Pesquisar" value="${esc(state.filters.q)}"><select id="filterType"><option value="">Todos os tipos</option><option value="entrada" ${state.filters.type==='entrada'?'selected':''}>Entradas</option><option value="saida" ${state.filters.type==='saida'?'selected':''}>Saídas</option></select><select id="filterCategory"><option value="">Todas as categorias</option>${categoryFilterOptions}</select><select id="filterStatus"><option value="">Todos os status</option><option value="pendente" ${state.filters.status==='pendente'?'selected':''}>Pendente</option><option value="pago" ${state.filters.status==='pago'?'selected':''}>Pago</option><option value="recebido" ${state.filters.status==='recebido'?'selected':''}>Recebido</option><option value="atrasado" ${state.filters.status==='atrasado'?'selected':''}>Atrasado</option></select></div>
         ${transactionsHtml()}
       </section>
       <section id="servicesPage" class="services-page"></section>
-    </main>
-  </div>`;
+    
+        <section id="settingsPage" class="settings-page">
+          <header class="page-header"><div><span class="eyebrow">SISTEMA</span><h1>Configurações</h1><p>Backup, restauração e preferências.</p></div></header>
+          <div class="settings-card"><h3>💾 Backup dos dados</h3><p>Exporte todos os seus dados em formato JSON para manter um backup seguro.</p><div class="settings-actions"><button id="backupBtn" class="btn primary">Baixar backup</button></div></div>
+          <div class="settings-card"><h3>📥 Restaurar dados</h3><p>Importe um backup JSON gerado anteriormente. Os dados importados serão adicionados ao sistema.</p><div class="settings-actions"><input type="file" id="restoreFile" accept=".json" style="display:none"><button id="restoreBtn" class="btn secondary">Selecionar arquivo</button></div></div>
+          <div class="settings-card"><h3>ℹ️ Sobre o sistema</h3><p>Financeiro Eduardo v0.3.0 — Sistema financeiro pessoal e profissional.</p></div>
+        </section>
+
+</main>
+
+      <nav class="mobile-bottom-nav">
+        <button class="nav-icon-btn active" id="mobileNavHome"><span class="nav-icon">⌂</span>Início</button>
+        <button class="nav-icon-btn" id="mobileNavTx"><span class="nav-icon">≡</span>Movimentos</button>
+        <button class="nav-icon-btn" id="mobileNavServices"><span class="nav-icon">▣</span>Serviços</button>
+        <button class="nav-icon-btn" id="mobileNavSettings"><span class="nav-icon">⚙</span>Config</button>
+      </nav>
+    </div>`;
   document.querySelector('#newBtn').onclick=openModal;
   document.querySelectorAll('[data-open-new]').forEach(b=>b.onclick=openModal);
   document.querySelector('#logoutBtn').onclick=logout;
@@ -183,6 +230,16 @@ function renderApp(){
   document.querySelector('#filterCategory').onchange=async e=>{state.filters.category_id=e.target.value;await refresh();};
   document.querySelector('#filterStatus').onchange=async e=>{state.filters.status=e.target.value;await refresh();};
   document.querySelector('#exportBtn').onclick=exportCsv;
+
+  document.querySelector('#printBtn').onclick=printReport;
+  document.querySelector('#setBudgetBtn').onclick=openBudgetModal;
+  document.querySelector('#navSettings').onclick=()=>{document.body.className='settings-mode';document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));document.querySelector('#navSettings').classList.add('active');};
+  document.querySelector('#mobileNavHome').onclick=()=>{document.querySelector('#navHome').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavHome').classList.add('active');};
+  document.querySelector('#mobileNavTx').onclick=()=>{document.querySelector('#navTx').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavTx').classList.add('active');};
+  document.querySelector('#mobileNavServices').onclick=()=>{document.querySelector('#navServices').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavServices').classList.add('active');};
+  document.querySelector('#mobileNavSettings').onclick=()=>{document.querySelector('#navSettings').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavSettings').classList.add('active');};
+  document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch('/api/backup',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
+
   document.querySelector('#navTransactions').onclick=()=>document.querySelector('#transactionsSection').scrollIntoView({behavior:'smooth'});
   document.querySelector('#navCategories').onclick=()=>document.querySelector('#categoriesSection').scrollIntoView({behavior:'smooth'});
   document.querySelector('#navServices').onclick=()=>{document.querySelector('.app-shell').classList.add('service-mode');document.querySelectorAll('.sidebar-nav .nav-item').forEach(x=>x.classList.remove('active'));document.querySelector('#navServices').classList.add('active');if(typeof window.__openServices==='function')window.__openServices();};
@@ -269,8 +326,8 @@ function openTransferModal(){
   document.querySelector('#transferForm').onsubmit=async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget).entries());try{await api('/api/transfers',{method:'POST',body:JSON.stringify(payload)});close();state.month=payload.transaction_date.slice(0,7);await refresh();}catch(ex){document.querySelector('#transferError').textContent=ex.message;}};
 }
 
-async function removeTx(id){if(!confirm('Excluir este lançamento?'))return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){alert(ex.message);}}
-async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){alert(ex.message);}}
+async function removeTx(id){const yes=await confirmDialog('Excluir este lançamento?');if(!yes)return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){toast(ex.message, 'error');}}
+async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message, 'error');}}
 async function logout(){try{await api('/api/logout',{method:'POST'});}catch{}localStorage.removeItem('financeiro_token');token='';renderLogin();}
 async function refresh(){await load();renderApp();}
 async function boot(){if(!token)return renderLogin();try{await refresh();}catch{if(token)renderLogin();}}

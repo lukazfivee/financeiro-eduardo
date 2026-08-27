@@ -1,6 +1,6 @@
 {
   "name": "financeiro-eduardo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sistema financeiro pessoal e profissional com controle de entradas, saídas, saldo e serviços",
   "author": "Construtec",
   "private": true,

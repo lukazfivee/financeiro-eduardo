@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const APP_URL = 'https://financeiro-eduardo.construtec-reports.workers.dev';
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 const LOCAL = process.env.FINANCEIRO_LOCAL === '1';
 const MIME = {'.html':'text/html','.js':'application/javascript','.css':'text/css','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon'};
 

@@ -1,4 +1,9 @@
-const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } });
+const corsHeaders = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'access-control-allow-headers': 'content-type, authorization',
+};
+const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders, ...headers } });
 const nowIso = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const PASSWORD_ITERATIONS = 10000;

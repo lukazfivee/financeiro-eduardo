@@ -72,7 +72,7 @@ function loginTemplate(mode = 'login') {
 
 async function renderLogin(targetMode){
   if(targetMode) authMode = targetMode;
-  const s = await fetch('/api/setup/status').then(r=>r.json()).catch(()=>({configured:false}));
+  const s = await api('/api/setup/status').catch(()=>({configured:false}));
   if(!s.configured && !targetMode) authMode = 'register';
 
   app.innerHTML = loginTemplate(authMode);

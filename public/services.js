@@ -15,7 +15,8 @@
     const token=localStorage.getItem('financeiro_token')||'';
     const headers={'content-type':'application/json',...(opts.headers||{})};
     if(token) headers.authorization=`Bearer ${token}`;
-    const r=await fetch(path,{...opts,headers});
+    const targetUrl = (location.protocol === "file:" || location.protocol === "app:") ? "https://financeiro-eduardo.construtec-reports.workers.dev" + path : path;
+  const r=await fetch(targetUrl,{...opts,headers});
     const ct=r.headers.get('content-type')||''; const data=ct.includes('application/json')?await r.json():await r.text();
     if(!r.ok) throw new Error(data?.error||'Erro na operação.');
     return data;

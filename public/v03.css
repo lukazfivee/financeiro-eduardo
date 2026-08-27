@@ -90,3 +90,8 @@
 .confirm-card h3{margin:0 0 .5rem;font-size:1rem}
 .confirm-card p{color:var(--muted,#9ca3af);font-size:.875rem;margin:0 0 1.25rem}
 .confirm-card .confirm-actions{display:flex;gap:.5rem;justify-content:flex-end}
+
+/* Auth toggle button */
+.auth-toggle{margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line,#e5e7eb);text-align:center;font-size:.875rem;color:var(--muted,#9ca3af);display:flex;align-items:center;justify-content:center;gap:.4rem}
+.btn-link{background:none;border:none;padding:0;color:var(--accent,#6366f1);font-weight:600;font-size:.875rem;cursor:pointer;text-decoration:underline}
+.btn-link:hover{opacity:.8}

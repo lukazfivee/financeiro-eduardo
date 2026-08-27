@@ -31,7 +31,10 @@ function toast(msg,type='success',duration=3000){const c=ensureToastContainer();
 function confirmDialog(msg){return new Promise(resolve=>{document.body.insertAdjacentHTML('beforeend',`<div class="confirm-overlay"><div class="confirm-card"><h3>Confirmação</h3><p>${esc(msg)}</p><div class="confirm-actions"><button class="btn secondary" id="confirmNo">Cancelar</button><button class="btn primary" id="confirmYes">Confirmar</button></div></div></div>`);const overlay=document.querySelector('.confirm-overlay');document.querySelector('#confirmNo').onclick=()=>{overlay.remove();resolve(false);};document.querySelector('#confirmYes').onclick=()=>{overlay.remove();resolve(true);};overlay.onclick=e=>{if(e.target===overlay){overlay.remove();resolve(false);}};});}
 
 
-function loginTemplate(configured){
+let authMode = 'login';
+
+function loginTemplate(mode = 'login') {
+  const isLogin = mode === 'login';
   return `<main class="auth-page">
     <section class="auth-hero">
       <div class="auth-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
@@ -46,34 +49,64 @@ function loginTemplate(configured){
     <section class="auth-panel">
       <div class="auth-card">
         <div class="mobile-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
-        <span class="eyebrow">${configured?'BEM-VINDO DE VOLTA':'PRIMEIRO ACESSO'}</span>
-        <h2>${configured?'Entre na sua conta':'Crie seu acesso'}</h2>
-        <p>${configured?'Informe seus dados para acessar o painel.':'Cadastre o usuário administrador para começar.'}</p>
+        <span class="eyebrow">${isLogin ? 'BEM-VINDO DE VOLTA' : 'NOVA CONTA'}</span>
+        <h2>${isLogin ? 'Entre na sua conta' : 'Crie sua conta'}</h2>
+        <p>${isLogin ? 'Informe seus dados para acessar o painel.' : 'Preencha os campos abaixo para cadastrar seu acesso.'}</p>
         <form id="authForm" class="auth-form">
-          ${configured?'':`<label>Nome completo<input name="name" autocomplete="name" placeholder="Digite seu nome" required></label>`}
+          ${isLogin ? '' : `<label>Nome completo<input name="name" autocomplete="name" placeholder="Digite seu nome" required></label>`}
           <label>E-mail<input name="email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" required></label>
-          <label>Senha<input name="password" type="password" minlength="8" autocomplete="current-password" placeholder="Mínimo de 8 caracteres" required></label>
-          <button class="btn primary auth-submit" type="submit">${configured?'Entrar no painel':'Criar acesso'} <span>→</span></button>
+          <label>Senha<input name="password" type="password" minlength="8" autocomplete="${isLogin ? 'current-password' : 'new-password'}" placeholder="Mínimo de 8 caracteres" required></label>
+          <button class="btn primary auth-submit" type="submit">${isLogin ? 'Entrar no painel' : 'Criar minha conta'} <span>→</span></button>
           <div id="authError" class="error"></div>
         </form>
+        <div class="auth-toggle">
+          ${isLogin ? 
+            `<span>Não tem uma conta?</span> <button type="button" id="toggleAuthMode" class="btn-link">Criar conta</button>` : 
+            `<span>Já tem uma conta?</span> <button type="button" id="toggleAuthMode" class="btn-link">Entrar</button>`
+          }
+        </div>
       </div>
     </section>
   </main>`;
 }
 
-async function renderLogin(){
-  const s=await fetch('/api/setup/status').then(r=>r.json()).catch(()=>({configured:false}));
-  app.innerHTML=loginTemplate(s.configured);
-  document.querySelector('#authForm').onsubmit=async e=>{
+async function renderLogin(targetMode){
+  if(targetMode) authMode = targetMode;
+  const s = await fetch('/api/setup/status').then(r=>r.json()).catch(()=>({configured:false}));
+  if(!s.configured && !targetMode) authMode = 'register';
+
+  app.innerHTML = loginTemplate(authMode);
+
+  const toggleBtn = document.querySelector('#toggleAuthMode');
+  if(toggleBtn){
+    toggleBtn.onclick = () => renderLogin(authMode === 'login' ? 'register' : 'login');
+  }
+
+  document.querySelector('#authForm').onsubmit = async e => {
     e.preventDefault();
-    const fd=new FormData(e.currentTarget);const payload=Object.fromEntries(fd.entries());
-    const err=document.querySelector('#authError');const btn=e.currentTarget.querySelector('button[type="submit"]');
-    err.textContent='';btn.disabled=true;btn.classList.add('loading');
-    try{
-      if(!s.configured)await api('/api/setup',{method:'POST',body:JSON.stringify(payload)});
-      const res=await api('/api/login',{method:'POST',body:JSON.stringify(payload)});
-      token=res.token;localStorage.setItem('financeiro_token',token);await boot();
-    }catch(ex){err.textContent=ex.message;btn.disabled=false;btn.classList.remove('loading');}
+    const fd = new FormData(e.currentTarget);
+    const payload = Object.fromEntries(fd.entries());
+    const err = document.querySelector('#authError');
+    const btn = e.currentTarget.querySelector('button[type="submit"]');
+    err.textContent = ''; btn.disabled = true; btn.classList.add('loading');
+    try {
+      if (authMode === 'register') {
+        if (!s.configured) {
+          await api('/api/setup', { method: 'POST', body: JSON.stringify(payload) });
+        } else {
+          await api('/api/register', { method: 'POST', body: JSON.stringify(payload) });
+        }
+        toast('Conta criada com sucesso!', 'success');
+      }
+      const res = await api('/api/login', { method: 'POST', body: JSON.stringify(payload) });
+      token = res.token;
+      localStorage.setItem('financeiro_token', token);
+      await boot();
+    } catch(ex) {
+      err.textContent = ex.message;
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
   };
 }
 

@@ -162,6 +162,18 @@ async function api(request, env, url) {
     return json({ ok: true });
   }
 
+  if (path === '/api/register' && request.method === 'POST') {
+    const b = await body(request);
+    const name = String(b.name || '').trim(); const email = String(b.email || '').trim().toLowerCase(); const password = String(b.password || '');
+    if (!name || !email || password.length < 8) return json({ error: 'Informe nome, e-mail e senha com pelo menos 8 caracteres.' }, 400);
+    const existing = await env.DB.prepare(`SELECT id FROM users WHERE email=?`).bind(email).first();
+    if (existing) return json({ error: 'Este e-mail já está cadastrado.' }, 409);
+    const salt = randomHex(16); const hash = await pbkdf2(password, salt, PASSWORD_ITERATIONS); const id = uid(); const ts = nowIso();
+    await env.DB.prepare(`INSERT INTO users(id,name,email,password_salt,password_hash,password_iterations,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,name,email,salt,hash,PASSWORD_ITERATIONS,ts,ts).run();
+    await seedDefaultCategories(env,id); await audit(env,id,'register','user',id);
+    return json({ ok: true });
+  }
+
   if (path === '/api/setup/status' && request.method === 'GET') {
     const row = await env.DB.prepare(`SELECT COUNT(*) AS c FROM users`).first();
     return json({ configured: (row?.c || 0) > 0 });

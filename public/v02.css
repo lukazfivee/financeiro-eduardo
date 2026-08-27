@@ -1,0 +1,15 @@
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+.filter-bar input,.filter-bar select{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;padding:9px 11px;font-weight:600;min-width:160px}
+.filter-bar input{min-width:220px}
+.badge.status-recebido,.badge.status-pago{background:var(--green-bg);color:var(--green)}
+.badge.status-atrasado{background:var(--red-bg);color:var(--red)}
+.badge.status-pendente{background:var(--yellow-bg,#fff4e6);color:var(--yellow,#ad6a12)}
+.services-extra-kpis{margin-top:-6px}
+.services-extra-kpis .kpi-card strong{font-size:21px}
+.link-btn{border:0;background:transparent;color:var(--blue);font-weight:800;padding:4px 0}
+.category-manage{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.category-edit{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:800}
+.detail-grid{display:grid;grid-template-columns:minmax(120px,.6fr) 1fr;gap:12px 16px}
+.detail-grid span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase}
+.detail-grid strong{color:var(--text);font-size:14px;min-width:0;overflow-wrap:anywhere}
+@media(max-width:780px){.filter-bar{display:grid;grid-template-columns:1fr}.filter-bar input,.filter-bar select{width:100%;min-width:0}.detail-grid{grid-template-columns:1fr}}

@@ -6,8 +6,9 @@ const monthLabel=v=>{if(!v)return'';const [y,m]=v.split('-');return new Intl.Dat
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const amountValue=c=>((Number(c)||0)/100).toFixed(2);
 const statusLabel=s=>({pendente:'Pendente',pago:'Pago',recebido:'Recebido',atrasado:'Atrasado'}[s]||'Pago');
+const accountTypeLabel=s=>({carteira:'Carteira',conta_corrente:'Conta corrente',poupanca:'Poupança',cartao:'Cartão',dinheiro:'Dinheiro',investimento:'Investimento'}[s]||'Carteira');
 let token=localStorage.getItem('financeiro_token')||'';
-let state={user:null,categories:[],transactions:[],dashboard:null,month:currentMonth(),filters:{type:'',category_id:'',status:''}};
+let state={user:null,categories:[],accounts:[],transactions:[],dashboard:null,month:currentMonth(),filters:{type:'',category_id:'',status:'',q:''}};
 
 async function api(path,opts={}){
   const headers={'content-type':'application/json',...(opts.headers||{})};
@@ -76,10 +77,11 @@ async function load(){
   if(state.filters.type)qs.set('type',state.filters.type);
   if(state.filters.category_id)qs.set('category_id',state.filters.category_id);
   if(state.filters.status)qs.set('status',state.filters.status);
+  if(state.filters.q)qs.set('q',state.filters.q);
   const [me,cats,tx,dash]=await Promise.all([
     api('/api/me'),api('/api/categories'),api(`/api/transactions?${qs}`),api(`/api/dashboard?month=${state.month}`)
   ]);
-  state.user=me.user;state.categories=cats.items;state.transactions=tx.items;state.dashboard=dash;
+  state.user=me.user;state.categories=cats.items;state.accounts=dash.accounts||[];state.transactions=tx.items;state.dashboard=dash;
 }
 
 function kpisHtml(){
@@ -95,24 +97,31 @@ function kpisHtml(){
 function transactionsHtml(){
   if(!state.transactions.length)return `<div class="empty-state"><div class="empty-icon">↕</div><h3>Nenhuma movimentação</h3><p>Você ainda não registrou lançamentos em ${monthLabel(state.month)}.</p><button class="btn primary" data-open-new>+ Adicionar lançamento</button></div>`;
   return `<div class="table-wrap"><table><thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Tipo</th><th>Status</th><th class="value-col">Valor</th><th></th></tr></thead><tbody>${state.transactions.map(t=>`<tr>
-    <td><div class="tx-main"><span class="tx-symbol ${t.type}">${t.type==='entrada'?'↑':'↓'}</span><div><strong>${esc(t.description)}</strong><small>${esc(t.payment_method||'Não informado')}</small></div></div></td>
+    <td><div class="tx-main"><span class="tx-symbol ${t.type}">${t.type==='entrada'?'↑':'↓'}</span><div><strong>${esc(t.description)}</strong><small>${esc(t.account_name||'Sem conta')} • ${esc(t.payment_method||'Não informado')} • ${Number(t.installment_count||1)>1?`Parcela ${esc(t.installment_number)}/${esc(t.installment_count)}`:(t.recurring_type==='mensal'?'Mensal':'Único')}</small></div></div></td>
     <td><span class="category-pill">${esc((t.category_icon||'')+' '+(t.category_name||'Sem categoria'))}</span></td>
     <td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td>
     <td><span class="badge ${t.type==='entrada'?'in':'out'}">${t.type==='entrada'?'Entrada':'Saída'}</span></td>
     <td><span class="badge status-${esc(t.status||'pago')}">${statusLabel(t.status)}</span></td>
     <td class="value-col ${t.type==='entrada'?'positive':'negative'}">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td>
-    <td><button class="icon-btn" title="Editar" data-edit="${t.id}">✎</button><button class="icon-btn" title="Excluir" data-delete="${t.id}">×</button></td>
+    <td><button class="icon-btn" title="Detalhes" data-detail="${t.id}">ⓘ</button><button class="icon-btn" title="Editar" data-edit="${t.id}">✎</button><button class="icon-btn" title="Excluir" data-delete="${t.id}">×</button></td>
   </tr>`).join('')}</tbody></table></div>`;
+}
+
+function accountsHtml(){
+  const items=state.accounts||[];
+  if(!items.length)return `<div class="mini-empty"><span>◌</span><p>Nenhuma conta cadastrada.</p></div>`;
+  return `<div class="category-list">${items.map(a=>`<div class="category-row"><div class="category-title"><span class="category-avatar">R$</span><div><strong>${esc(a.name)}</strong><small>${accountTypeLabel(a.type)}</small></div></div><div class="category-amount"><strong>${money(a.balance_cents)}</strong><button class="link-btn" data-account-edit="${a.id}">Editar</button></div></div>`).join('')}</div>`;
 }
 
 function categoriesHtml(){
   const items=state.dashboard?.expenses_by_category||[];
-  if(!items.length)return `<div class="mini-empty"><span>◌</span><p>Sem despesas por categoria neste mês.</p></div>`;
+  const manage=state.categories.length?`<div class="category-manage">${state.categories.map(c=>`<button class="category-edit" data-category-edit="${c.id}">${esc((c.icon||'')+' '+c.name)}</button>`).join('')}</div>`:'';
+  if(!items.length)return `<div class="mini-empty"><span>◌</span><p>Sem despesas por categoria neste mês.</p></div>${manage}`;
   const total=items.reduce((a,b)=>a+Number(b.total_cents||0),0);
   return `<div class="category-list">${items.map((x,i)=>{const pct=total?Math.round(Number(x.total_cents||0)/total*100):0;return `<div class="category-row">
     <div class="category-title"><span class="category-avatar tone-${i%5}">${esc(x.icon||'•')}</span><div><strong>${esc(x.name)}</strong><small>${pct}% das despesas</small></div></div>
     <div class="category-amount"><strong>${money(x.total_cents)}</strong><div class="progress"><span style="width:${Math.max(4,pct)}%"></span></div></div>
-  </div>`;}).join('')}</div>`;
+  </div>`;}).join('')}</div>${manage}`;
 }
 
 function overviewHtml(){
@@ -136,6 +145,7 @@ function renderApp(){
         <button class="nav-item active">${icon('home')}<span>Visão geral</span></button>
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
         <button class="nav-item" id="navCategories">${icon('chart')}<span>Categorias</span></button>
+        <button class="nav-item" id="navServices"><span class="ui-icon">▣</span><span>Serviços</span></button>
       </nav>
       <div class="sidebar-foot">
         <div class="user-avatar">${esc((state.user?.name||'E').trim().charAt(0).toUpperCase())}</div>
@@ -151,27 +161,40 @@ function renderApp(){
       ${kpisHtml()}
       <section class="dashboard-grid">
         <article class="panel">${overviewHtml()}</article>
-        <article class="panel" id="categoriesSection"><div class="panel-head"><div><span class="eyebrow">DESPESAS</span><h2>Por categoria</h2></div></div>${categoriesHtml()}</article>
+        <article class="panel" id="categoriesSection"><div class="panel-head"><div><span class="eyebrow">DESPESAS</span><h2>Por categoria</h2></div><button id="newCategoryBtn" class="btn secondary">+ Categoria</button></div>${categoriesHtml()}</article>
+      </section>
+      <section class="dashboard-grid">
+        <article class="panel" id="accountsSection"><div class="panel-head"><div><span class="eyebrow">CARTEIRAS</span><h2>Contas</h2></div><div class="panel-actions"><button id="transferBtn" class="btn secondary">Transferir</button><button id="newAccountBtn" class="btn secondary">+ Conta</button></div></div>${accountsHtml()}</article>
       </section>
       <section class="panel transactions-panel" id="transactionsSection">
         <div class="panel-head"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2></div><div class="panel-actions"><span class="record-count">${state.transactions.length} ${state.transactions.length===1?'lançamento':'lançamentos'}</span><button id="exportBtn" class="btn secondary">${icon('export')} Exportar CSV</button></div></div>
-        <div class="filter-bar"><select id="filterType"><option value="">Todos os tipos</option><option value="entrada" ${state.filters.type==='entrada'?'selected':''}>Entradas</option><option value="saida" ${state.filters.type==='saida'?'selected':''}>Saídas</option></select><select id="filterCategory"><option value="">Todas as categorias</option>${categoryFilterOptions}</select><select id="filterStatus"><option value="">Todos os status</option><option value="pendente" ${state.filters.status==='pendente'?'selected':''}>Pendente</option><option value="pago" ${state.filters.status==='pago'?'selected':''}>Pago</option><option value="recebido" ${state.filters.status==='recebido'?'selected':''}>Recebido</option><option value="atrasado" ${state.filters.status==='atrasado'?'selected':''}>Atrasado</option></select></div>
+        <div class="filter-bar"><input id="filterSearch" placeholder="Pesquisar" value="${esc(state.filters.q)}"><select id="filterType"><option value="">Todos os tipos</option><option value="entrada" ${state.filters.type==='entrada'?'selected':''}>Entradas</option><option value="saida" ${state.filters.type==='saida'?'selected':''}>Saídas</option></select><select id="filterCategory"><option value="">Todas as categorias</option>${categoryFilterOptions}</select><select id="filterStatus"><option value="">Todos os status</option><option value="pendente" ${state.filters.status==='pendente'?'selected':''}>Pendente</option><option value="pago" ${state.filters.status==='pago'?'selected':''}>Pago</option><option value="recebido" ${state.filters.status==='recebido'?'selected':''}>Recebido</option><option value="atrasado" ${state.filters.status==='atrasado'?'selected':''}>Atrasado</option></select></div>
         ${transactionsHtml()}
       </section>
+      <section id="servicesPage" class="services-page"></section>
     </main>
   </div>`;
   document.querySelector('#newBtn').onclick=openModal;
   document.querySelectorAll('[data-open-new]').forEach(b=>b.onclick=openModal);
   document.querySelector('#logoutBtn').onclick=logout;
   document.querySelector('#month').onchange=async e=>{state.month=e.target.value;await refresh();};
+  document.querySelector('#filterSearch').oninput=e=>{state.filters.q=e.target.value;clearTimeout(window.__financeiroSearch);window.__financeiroSearch=setTimeout(refresh,250);};
   document.querySelector('#filterType').onchange=async e=>{state.filters.type=e.target.value;await refresh();};
   document.querySelector('#filterCategory').onchange=async e=>{state.filters.category_id=e.target.value;await refresh();};
   document.querySelector('#filterStatus').onchange=async e=>{state.filters.status=e.target.value;await refresh();};
   document.querySelector('#exportBtn').onclick=exportCsv;
   document.querySelector('#navTransactions').onclick=()=>document.querySelector('#transactionsSection').scrollIntoView({behavior:'smooth'});
   document.querySelector('#navCategories').onclick=()=>document.querySelector('#categoriesSection').scrollIntoView({behavior:'smooth'});
+  document.querySelector('#navServices').onclick=()=>{document.querySelector('.app-shell').classList.add('service-mode');document.querySelectorAll('.sidebar-nav .nav-item').forEach(x=>x.classList.remove('active'));document.querySelector('#navServices').classList.add('active');if(typeof window.__openServices==='function')window.__openServices();};
+  document.querySelector('#newCategoryBtn').onclick=()=>openCategoryModal();
+  document.querySelector('#newAccountBtn').onclick=()=>openAccountModal();
+  document.querySelector('#transferBtn').onclick=openTransferModal;
   document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeTx(b.dataset.delete));
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openModal(state.transactions.find(t=>t.id===b.dataset.edit)));
+  document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openDetails(state.transactions.find(t=>t.id===b.dataset.detail)));
+  document.querySelectorAll('[data-account-edit]').forEach(b=>b.onclick=()=>openAccountModal(state.accounts.find(a=>a.id===b.dataset.accountEdit)));
+  document.querySelectorAll('[data-category-edit]').forEach(b=>b.onclick=()=>openCategoryModal(state.categories.find(c=>c.id===b.dataset.categoryEdit)));
+  if(typeof window.__initServices==='function') window.__initServices();
 }
 
 function filterCategoryOptions(type){
@@ -183,6 +206,7 @@ function filterCategoryOptions(type){
 function openModal(tx=null){
   const editing=Boolean(tx?.id);
   const options=state.categories.map(c=>`<option value="${c.id}" data-type="${c.type}">${esc((c.icon||'')+' '+c.name)}</option>`).join('');
+  const accountOptions=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
   document.body.insertAdjacentHTML('beforeend',`<div id="modal" class="modal"><div class="modal-card">
     <div class="modal-head"><div><span class="eyebrow">MOVIMENTAÇÃO</span><h2>${editing?'Editar lançamento':'Novo lançamento'}</h2><p>Registre uma entrada ou saída no seu financeiro.</p></div><button id="closeModal" class="modal-close">×</button></div>
     <form id="txForm" class="form">
@@ -191,6 +215,7 @@ function openModal(tx=null){
       <label class="field"><span>Valor</span><div class="money-input"><b>R$</b><input name="amount" type="number" min="0.01" step="0.01" placeholder="0,00" value="${esc(tx?amountValue(tx.amount_cents):'')}" required></div></label>
       <label class="field"><span>Data</span><input name="transaction_date" type="date" value="${esc(tx?.transaction_date||today())}" required></label>
       <label class="field"><span>Categoria</span><select name="category_id" id="category"><option value="">Sem categoria</option>${options}</select></label>
+      <label class="field"><span>Conta</span><select name="account_id" id="account"><option value="">Sem conta</option>${accountOptions}</select></label>
       <label class="field"><span>Forma de pagamento</span><select name="payment_method"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão de débito">Cartão de débito</option><option value="Cartão de crédito">Cartão de crédito</option><option value="Transferência">Transferência</option><option value="Boleto">Boleto</option><option value="Outro">Outro</option></select></label>
       <label class="field"><span>Status</span><select name="status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="recebido">Recebido</option><option value="atrasado">Atrasado</option></select></label>
       <label class="field"><span>Recorrência</span><select name="recurring_type"><option value="nenhuma">Não recorrente</option><option value="mensal">Mensal</option></select></label>
@@ -205,6 +230,7 @@ function openModal(tx=null){
   const close=()=>modal.remove();document.querySelector('#closeModal').onclick=close;document.querySelector('#cancelModal').onclick=close;
   modal.onclick=e=>{if(e.target===modal)close();};
   if(tx?.category_id)document.querySelector('#category').value=tx.category_id;
+  if(tx?.account_id)document.querySelector('#account').value=tx.account_id;
   if(tx?.payment_method)document.querySelector('select[name="payment_method"]').value=tx.payment_method;
   document.querySelector('select[name="status"]').value=tx?.status||((tx?.type||'entrada')==='entrada'?'recebido':'pago');
   document.querySelector('select[name="recurring_type"]').value=tx?.recurring_type||'nenhuma';
@@ -216,10 +242,37 @@ function openModal(tx=null){
   };
 }
 
+function openDetails(tx){
+  if(!tx)return;
+  document.body.insertAdjacentHTML('beforeend',`<div id="detailModal" class="modal"><div class="modal-card"><div class="modal-head"><div><span class="eyebrow">DETALHES</span><h2>${esc(tx.description)}</h2><p>${esc(tx.transaction_date.split('-').reverse().join('/'))}</p></div><button class="modal-close" id="closeDetail">×</button></div><div class="detail-grid"><span>Tipo</span><strong>${tx.type==='entrada'?'Entrada':'Saída'}</strong><span>Status</span><strong>${statusLabel(tx.status)}</strong><span>Conta</span><strong>${esc(tx.account_name||'Sem conta')}</strong><span>Categoria</span><strong>${esc(tx.category_name||'Sem categoria')}</strong><span>Valor</span><strong>${money(tx.amount_cents)}</strong><span>Parcelamento</span><strong>${esc(tx.installment_number||1)}/${esc(tx.installment_count||1)}</strong><span>Recorrência</span><strong>${tx.recurring_type==='mensal'?'Mensal':'Não recorrente'}</strong><span>Observações</span><strong>${esc(tx.notes||'-')}</strong></div><div class="modal-actions full"><button class="btn secondary" id="editFromDetail">Editar</button></div></div></div>`);
+  const modal=document.querySelector('#detailModal');document.querySelector('#closeDetail').onclick=()=>modal.remove();document.querySelector('#editFromDetail').onclick=()=>{modal.remove();openModal(tx);};modal.onclick=e=>{if(e.target===modal)modal.remove();};
+}
+
+function openCategoryModal(category=null){
+  const editing=Boolean(category?.id);
+  document.body.insertAdjacentHTML('beforeend',`<div id="categoryModal" class="modal"><div class="modal-card"><div class="modal-head"><div><span class="eyebrow">CATEGORIA</span><h2>${editing?'Editar categoria':'Nova categoria'}</h2></div><button class="modal-close" id="closeCategory">×</button></div><form id="categoryForm" class="form"><label class="field"><span>Nome</span><input name="name" value="${esc(category?.name||'')}" required></label><label class="field"><span>Ícone</span><input name="icon" value="${esc(category?.icon||'📁')}"></label><label class="field full"><span>Tipo</span><select name="type"><option value="ambos">Ambos</option><option value="entrada">Entrada</option><option value="saida">Saída</option></select></label><div id="categoryError" class="error full"></div><div class="modal-actions full"><button class="btn secondary" type="button" id="cancelCategory">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form></div></div>`);
+  const modal=document.querySelector('#categoryModal');const close=()=>modal.remove();document.querySelector('#closeCategory').onclick=close;document.querySelector('#cancelCategory').onclick=close;document.querySelector('select[name="type"]').value=category?.type||'ambos';
+  document.querySelector('#categoryForm').onsubmit=async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget).entries());try{await api(editing?`/api/categories/${category.id}`:'/api/categories',{method:editing?'PUT':'POST',body:JSON.stringify(payload)});close();await refresh();}catch(ex){document.querySelector('#categoryError').textContent=ex.message;}};
+}
+
+function openAccountModal(account=null){
+  const editing=Boolean(account?.id);
+  document.body.insertAdjacentHTML('beforeend',`<div id="accountModal" class="modal"><div class="modal-card"><div class="modal-head"><div><span class="eyebrow">CONTA</span><h2>${editing?'Editar conta':'Nova conta'}</h2></div><button class="modal-close" id="closeAccount">×</button></div><form id="accountForm" class="form"><label class="field"><span>Nome</span><input name="name" value="${esc(account?.name||'')}" required></label><label class="field"><span>Tipo</span><select name="type"><option value="carteira">Carteira</option><option value="conta_corrente">Conta corrente</option><option value="poupanca">Poupança</option><option value="cartao">Cartão</option><option value="dinheiro">Dinheiro</option><option value="investimento">Investimento</option></select></label><label class="field full"><span>Saldo inicial</span><div class="money-input"><b>R$</b><input name="opening_balance" type="number" step="0.01" value="${esc(amountValue(account?.opening_balance_cents))}"></div></label><div id="accountError" class="error full"></div><div class="modal-actions full"><button class="btn secondary" type="button" id="cancelAccount">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form></div></div>`);
+  const modal=document.querySelector('#accountModal');const close=()=>modal.remove();document.querySelector('#closeAccount').onclick=close;document.querySelector('#cancelAccount').onclick=close;document.querySelector('select[name="type"]').value=account?.type||'carteira';
+  document.querySelector('#accountForm').onsubmit=async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget).entries());try{await api(editing?`/api/accounts/${account.id}`:'/api/accounts',{method:editing?'PUT':'POST',body:JSON.stringify(payload)});close();await refresh();}catch(ex){document.querySelector('#accountError').textContent=ex.message;}};
+}
+
+function openTransferModal(){
+  const options=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+  document.body.insertAdjacentHTML('beforeend',`<div id="transferModal" class="modal"><div class="modal-card"><div class="modal-head"><div><span class="eyebrow">TRANSFERÊNCIA</span><h2>Transferir entre contas</h2></div><button class="modal-close" id="closeTransfer">×</button></div><form id="transferForm" class="form"><label class="field"><span>Origem</span><select name="from_account_id" required>${options}</select></label><label class="field"><span>Destino</span><select name="to_account_id" required>${options}</select></label><label class="field"><span>Valor</span><div class="money-input"><b>R$</b><input name="amount" type="number" min="0.01" step="0.01" required></div></label><label class="field"><span>Data</span><input name="transaction_date" type="date" value="${today()}" required></label><label class="field full"><span>Descrição</span><input name="description" value="Transferência entre contas"></label><div id="transferError" class="error full"></div><div class="modal-actions full"><button class="btn secondary" id="cancelTransfer" type="button">Cancelar</button><button class="btn primary" type="submit">Transferir</button></div></form></div></div>`);
+  const modal=document.querySelector('#transferModal');const close=()=>modal.remove();document.querySelector('#closeTransfer').onclick=close;document.querySelector('#cancelTransfer').onclick=close;
+  document.querySelector('#transferForm').onsubmit=async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.currentTarget).entries());try{await api('/api/transfers',{method:'POST',body:JSON.stringify(payload)});close();state.month=payload.transaction_date.slice(0,7);await refresh();}catch(ex){document.querySelector('#transferError').textContent=ex.message;}};
+}
+
 async function removeTx(id){if(!confirm('Excluir este lançamento?'))return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){alert(ex.message);}}
 async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){alert(ex.message);}}
 async function logout(){try{await api('/api/logout',{method:'POST'});}catch{}localStorage.removeItem('financeiro_token');token='';renderLogin();}
 async function refresh(){await load();renderApp();}
 async function boot(){if(!token)return renderLogin();try{await refresh();}catch{if(token)renderLogin();}}
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}).catch(()=>{});
 boot();

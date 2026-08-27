@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 CREATE INDEX IF NOT EXISTS categories_user_idx ON categories(user_id, name);
 
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'carteira' CHECK (type IN ('carteira','conta_corrente','poupanca','cartao','dinheiro','investimento')),
+  opening_balance_cents INTEGER NOT NULL DEFAULT 0,
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS accounts_user_idx ON accounts(user_id, name);
+
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -42,6 +55,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
   transaction_date TEXT NOT NULL,
   category_id TEXT,
+  account_id TEXT,
+  transfer_group_id TEXT,
   payment_method TEXT,
   notes TEXT,
   status TEXT NOT NULL DEFAULT 'pago' CHECK (status IN ('pendente','pago','recebido','atrasado')),
@@ -51,7 +66,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
+  FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions(user_id, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS transactions_category_idx ON transactions(user_id, category_id);
@@ -69,7 +85,7 @@ CREATE TABLE IF NOT EXISTS service_transactions (
   payment_method TEXT,
   notes TEXT,
   payment_status TEXT NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente','pago','recebido','atrasado')),
-  service_status TEXT NOT NULL DEFAULT 'em_andamento' CHECK (service_status IN ('orcamento','aprovado','em_andamento','concluido','cancelado')),
+  service_status TEXT NOT NULL DEFAULT 'em_execucao' CHECK (service_status IN ('orcamento','aprovado','em_execucao','em_andamento','aguardando_pagamento','concluido','recebido','cancelado')),
   contracted_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (contracted_amount_cents >= 0),
   received_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (received_amount_cents >= 0),
   expected_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (expected_cost_cents >= 0),

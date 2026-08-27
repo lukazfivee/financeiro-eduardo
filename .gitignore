@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.wrangler/
+wrangler.toml
+.agents/
+.codex-plugins/
+testar-local.bat

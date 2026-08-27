@@ -7,6 +7,9 @@ on:
       - main
     paths:
       - desktop/**
+      - public/**
+      - src/**
+      - schema.sql
       - package.json
       - .github/workflows/build-windows.yml
 
@@ -31,6 +34,8 @@ jobs:
         run: npm install
 
       - name: Gerar executavel
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:win
 
       - name: Publicar artefato

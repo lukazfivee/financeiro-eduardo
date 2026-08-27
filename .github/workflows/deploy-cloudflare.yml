@@ -49,6 +49,7 @@ jobs:
         run: npm run check
 
       - name: Aplicar estrutura do banco D1
+        continue-on-error: true
         run: npx --yes wrangler@4.33.1 d1 execute financeiro-eduardo --remote --file=./schema.sql --config=./wrangler.toml
 
       - name: Publicar Worker e PWA

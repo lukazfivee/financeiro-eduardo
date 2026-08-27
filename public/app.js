@@ -7,13 +7,14 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 const amountValue=c=>((Number(c)||0)/100).toFixed(2);
 const statusLabel=s=>({pendente:'Pendente',pago:'Pago',recebido:'Recebido',atrasado:'Atrasado'}[s]||'Pago');
 const accountTypeLabel=s=>({carteira:'Carteira',conta_corrente:'Conta corrente',poupanca:'Poupança',cartao:'Cartão',dinheiro:'Dinheiro',investimento:'Investimento'}[s]||'Carteira');
+const apiUrl=path=>(location.protocol==='file:'||location.protocol==='app:')?`https://financeiro-eduardo.construtec-reports.workers.dev${path}`:path;
 let token=localStorage.getItem('financeiro_token')||'';
 let state={user:null,categories:[],accounts:[],transactions:[],dashboard:null,month:currentMonth(),filters:{type:'',category_id:'',status:'',q:''}, history:[], dashboard:{budgets:[],expenses_by_category:[]}};
 
 async function api(path,opts={}){
   const headers={'content-type':'application/json',...(opts.headers||{})};
   if(token)headers.authorization=`Bearer ${token}`;
-  const r=await fetch(path,{...opts,headers});
+  const r=await fetch(apiUrl(path),{...opts,headers});
   if(r.status===401&&token){localStorage.removeItem('financeiro_token');token='';renderLogin();throw new Error('Sessão expirada.');}
   const ct=r.headers.get('content-type')||'';
   const data=ct.includes('application/json')?await r.json():await r.text();
@@ -271,7 +272,7 @@ function renderApp(){
   document.querySelector('#mobileNavTx').onclick=()=>{document.querySelector('#navTx').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavTx').classList.add('active');};
   document.querySelector('#mobileNavServices').onclick=()=>{document.querySelector('#navServices').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavServices').classList.add('active');};
   document.querySelector('#mobileNavSettings').onclick=()=>{document.querySelector('#navSettings').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavSettings').classList.add('active');};
-  document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch('/api/backup',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
+  document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch(apiUrl('/api/backup'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
 
   document.querySelector('#navTransactions').onclick=()=>document.querySelector('#transactionsSection').scrollIntoView({behavior:'smooth'});
   document.querySelector('#navCategories').onclick=()=>document.querySelector('#categoriesSection').scrollIntoView({behavior:'smooth'});
@@ -360,9 +361,9 @@ function openTransferModal(){
 }
 
 async function removeTx(id){const yes=await confirmDialog('Excluir este lançamento?');if(!yes)return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){toast(ex.message, 'error');}}
-async function exportCsv(){try{const r=await fetch('/api/export.csv',{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message, 'error');}}
+async function exportCsv(){try{const r=await fetch(apiUrl('/api/export.csv'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message, 'error');}}
 async function logout(){try{await api('/api/logout',{method:'POST'});}catch{}localStorage.removeItem('financeiro_token');token='';renderLogin();}
 async function refresh(){await load();renderApp();}
-async function boot(){if(!token)return renderLogin();try{await refresh();}catch{if(token)renderLogin();}}
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}).catch(()=>{});
+async function boot(){if(!token)return renderLogin();try{await refresh();}catch(ex){if(token){await renderLogin();const err=document.querySelector('#authError');if(err)err.textContent=ex.message||'Não foi possível carregar o painel.';}}}
+if(location.protocol.startsWith('http')&&'serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}).catch(()=>{});
 boot();

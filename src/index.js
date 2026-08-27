@@ -53,6 +53,31 @@ async function migrateAppSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS accounts_user_idx ON accounts(user_id, name)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS accounts_user_active_idx ON accounts(user_id, archived_at, name)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS service_transactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    service_name TEXT NOT NULL,
+    client_name TEXT,
+    type TEXT NOT NULL CHECK (type IN ('entrada','saida')),
+    description TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+    transaction_date TEXT NOT NULL,
+    category TEXT,
+    payment_method TEXT,
+    notes TEXT,
+    payment_status TEXT NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente','pago','recebido','atrasado')),
+    service_status TEXT NOT NULL DEFAULT 'em_execucao' CHECK (service_status IN ('orcamento','aprovado','em_execucao','em_andamento','aguardando_pagamento','concluido','recebido','cancelado')),
+    contracted_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (contracted_amount_cents >= 0),
+    received_amount_cents INTEGER NOT NULL DEFAULT 0 CHECK (received_amount_cents >= 0),
+    expected_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (expected_cost_cents >= 0),
+    actual_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (actual_cost_cents >= 0),
+    recurring_type TEXT NOT NULL DEFAULT 'nenhuma' CHECK (recurring_type IN ('nenhuma','mensal')),
+    installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count >= 1),
+    installment_number INTEGER NOT NULL DEFAULT 1 CHECK (installment_number >= 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
   await ensureColumns(env, 'transactions', [
     { name: 'account_id', sql: `account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL` },
     { name: 'transfer_group_id', sql: `transfer_group_id TEXT` },

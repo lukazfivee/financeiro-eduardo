@@ -38,7 +38,7 @@ function loginTemplate(mode = 'login') {
   const isLogin = mode === 'login';
   return `<main class="auth-page">
     <section class="auth-hero">
-      <div class="auth-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
+      <div class="auth-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
       <div class="auth-copy">
         <span class="eyebrow">CONTROLE FINANCEIRO</span>
         <h1>Seu dinheiro,<br><strong>mais organizado.</strong></h1>
@@ -49,7 +49,7 @@ function loginTemplate(mode = 'login') {
     </section>
     <section class="auth-panel">
       <div class="auth-card">
-        <div class="mobile-brand"><div class="brand-mark">R$</div><span>Financeiro Eduardo</span></div>
+        <div class="mobile-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
         <span class="eyebrow">${isLogin ? 'BEM-VINDO DE VOLTA' : 'NOVA CONTA'}</span>
         <h2>${isLogin ? 'Entre na sua conta' : 'Crie sua conta'}</h2>
         <p>${isLogin ? 'Informe seus dados para acessar o painel.' : 'Preencha os campos abaixo para cadastrar seu acesso.'}</p>
@@ -188,7 +188,7 @@ function budgetHtml(){
 }
 function printReport(){
   const d=state.dashboard||{};const txs=state.transactions||[];
-  const html=`<div class="print-overlay" id="printOverlay"><div class="print-actions"><button class="btn primary" onclick="window.print()">🖨️ Imprimir</button><button class="btn secondary" onclick="document.querySelector('#printOverlay').remove()">✕ Fechar</button></div><div class="print-header"><h1>Financeiro Eduardo</h1><p>Relatório de ${monthLabel(state.month)}</p></div><div class="print-kpis"><div class="print-kpi"><strong>${money(d.entradas_cents)}</strong><small>Entradas</small></div><div class="print-kpi"><strong>${money(d.saidas_cents)}</strong><small>Saídas</small></div><div class="print-kpi"><strong>${money(d.saldo_mes_cents)}</strong><small>Resultado</small></div><div class="print-kpi"><strong>${money(d.saldo_total_cents)}</strong><small>Saldo total</small></div></div><table><thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Status</th><th>Valor</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td><td>${esc(t.description)}</td><td>${t.type==='entrada'?'Entrada':'Saída'}</td><td>${esc(t.category_name||'Sem categoria')}</td><td>${statusLabel(t.status)}</td><td style="text-align:right">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td></tr>`).join('')}</tbody></table></div>`;
+  const html=`<div class="print-overlay" id="printOverlay"><div class="print-actions"><button class="btn primary" onclick="window.print()">🖨️ Imprimir</button><button class="btn secondary" onclick="document.querySelector('#printOverlay').remove()">✕ Fechar</button></div><div class="print-header"><h1>Financeiro CENGTEC</h1><p>Relatório de ${monthLabel(state.month)}</p></div><div class="print-kpis"><div class="print-kpi"><strong>${money(d.entradas_cents)}</strong><small>Entradas</small></div><div class="print-kpi"><strong>${money(d.saidas_cents)}</strong><small>Saídas</small></div><div class="print-kpi"><strong>${money(d.saldo_mes_cents)}</strong><small>Resultado</small></div><div class="print-kpi"><strong>${money(d.saldo_total_cents)}</strong><small>Saldo total</small></div></div><table><thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Status</th><th>Valor</th></tr></thead><tbody>${txs.map(t=>`<tr><td>${esc(t.transaction_date.split('-').reverse().join('/'))}</td><td>${esc(t.description)}</td><td>${t.type==='entrada'?'Entrada':'Saída'}</td><td>${esc(t.category_name||'Sem categoria')}</td><td>${statusLabel(t.status)}</td><td style="text-align:right">${t.type==='entrada'?'+':'-'} ${money(t.amount_cents)}</td></tr>`).join('')}</tbody></table></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
 }
 function openBudgetModal(){
@@ -203,7 +203,7 @@ function renderApp(){
   const categoryFilterOptions=state.categories.map(c=>`<option value="${c.id}" ${state.filters.category_id===c.id?'selected':''}>${esc((c.icon||'')+' '+c.name)}</option>`).join('');
   app.innerHTML=`<div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-brand"><div class="brand-mark">R$</div><div><strong>Financeiro</strong><span>Eduardo</span></div></div>
+      <div class="sidebar-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><div><strong>Financeiro</strong><span>CENGTEC</span></div></div>
       <nav class="sidebar-nav">
         <button class="nav-item active" id="navHome">${icon('home')}<span>Visão geral</span></button>
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
@@ -212,13 +212,13 @@ function renderApp(){
       </nav>
       <div class="sidebar-foot">
         <div class="user-avatar">${esc((state.user?.name||'E').trim().charAt(0).toUpperCase())}</div>
-        <div class="user-meta"><strong>${esc(state.user?.name||'Eduardo')}</strong><span>${esc(state.user?.email||'')}</span></div>
+        <div class="user-meta"><strong>${esc(state.user?.name||'Usuário')}</strong><span>${esc(state.user?.email||'')}</span></div>
         <button id="logoutBtn" class="logout-icon" title="Sair">${icon('logout')}</button>
       </div>
     </aside>
     <main class="main-content">
       <header class="page-header">
-        <div><span class="eyebrow">PAINEL FINANCEIRO</span><h1>Olá, ${esc((state.user?.name||'Eduardo').split(' ')[0])} 👋</h1><p>Acompanhe seu dinheiro e mantenha tudo sob controle.</p></div>
+        <div><span class="eyebrow">PAINEL FINANCEIRO</span><h1>Olá, ${esc((state.user?.name||'Usuário').split(' ')[0])} 👋</h1><p>Visão financeira exclusiva deste perfil.</p></div>
         <div class="header-actions"><input id="month" class="month-input" type="month" value="${state.month}"><button id="newBtn" class="btn primary">${icon('plus')} Novo lançamento</button></div>
       </header>
       ${kpisHtml()}
@@ -243,7 +243,7 @@ function renderApp(){
           <header class="page-header"><div><span class="eyebrow">SISTEMA</span><h1>Configurações</h1><p>Backup, restauração e preferências.</p></div></header>
           <div class="settings-card"><h3>💾 Backup dos dados</h3><p>Exporte todos os seus dados em formato JSON para manter um backup seguro.</p><div class="settings-actions"><button id="backupBtn" class="btn primary">Baixar backup</button></div></div>
           <div class="settings-card"><h3>📥 Restaurar dados</h3><p>Importe um backup JSON gerado anteriormente. Os dados importados serão adicionados ao sistema.</p><div class="settings-actions"><input type="file" id="restoreFile" accept=".json" style="display:none"><button id="restoreBtn" class="btn secondary">Selecionar arquivo</button></div></div>
-          <div class="settings-card"><h3>ℹ️ Sobre o sistema</h3><p>Financeiro Eduardo v0.3.0 — Sistema financeiro pessoal e profissional.</p></div>
+          <div class="settings-card"><h3>ℹ️ Sobre o sistema</h3><p>Financeiro CENGTEC v0.4.0 — visão geral privada por perfil e Serviços compartilhados.</p></div>
         </section>
 
 </main>
@@ -273,7 +273,7 @@ function renderApp(){
   document.querySelector('#mobileNavTx').onclick=()=>{document.querySelector('#navTransactions').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavTx').classList.add('active');};
   document.querySelector('#mobileNavServices').onclick=()=>{document.querySelector('#navServices').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavServices').classList.add('active');};
   document.querySelector('#mobileNavSettings').onclick=()=>{document.querySelector('#navSettings').click();document.querySelectorAll('.nav-icon-btn').forEach(b=>b.classList.remove('active'));document.querySelector('#mobileNavSettings').classList.add('active');};
-  document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch(apiUrl('/api/backup'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
+  document.querySelector('#backupBtn').onclick=async ()=>{try{const r=await fetch(apiUrl('/api/backup'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Falha no backup');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financeiro-cengtec-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message,'error');}};
 
   document.querySelector('#navTransactions').onclick=()=>document.querySelector('#transactionsSection').scrollIntoView({behavior:'smooth'});
   document.querySelector('#navCategories').onclick=()=>document.querySelector('#categoriesSection').scrollIntoView({behavior:'smooth'});
@@ -361,7 +361,7 @@ function openTransferModal(){
 }
 
 async function removeTx(id){const yes=await confirmDialog('Excluir este lançamento?');if(!yes)return;try{await api(`/api/transactions/${id}`,{method:'DELETE'});await refresh();}catch(ex){toast(ex.message, 'error');}}
-async function exportCsv(){try{const r=await fetch(apiUrl('/api/export.csv'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-eduardo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message, 'error');}}
+async function exportCsv(){try{const r=await fetch(apiUrl('/api/export.csv'),{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Não foi possível exportar.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='financeiro-cengtec.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(ex){toast(ex.message, 'error');}}
 async function logout(){try{await api('/api/logout',{method:'POST'});}catch{}localStorage.removeItem('financeiro_token');token='';renderLogin();}
 async function refresh(){await load();renderApp();}
 async function boot(){if(!token)return renderLogin();try{await refresh();}catch(ex){if(token){await renderLogin();const err=document.querySelector('#authError');if(err)err.textContent=ex.message||'Não foi possível carregar o painel.';}}}

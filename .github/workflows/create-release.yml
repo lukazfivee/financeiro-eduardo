@@ -1,4 +1,4 @@
-name: Criar Release Financeiro Eduardo 0.3.0
+name: Criar Release Financeiro CENGTEC 0.4.0
 
 on:
   workflow_dispatch:
@@ -18,16 +18,16 @@ jobs:
       - name: Baixar codigo
         uses: actions/checkout@v6
 
-      - name: Criar release v0.3.0
+      - name: Criar release v0.4.0
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view v0.3.0 >/dev/null 2>&1; then
-            echo "Release v0.3.0 ja existe."
+          if gh release view v0.4.0 >/dev/null 2>&1; then
+            echo "Release v0.4.0 ja existe."
           else
-            gh release create v0.3.0 \
+            gh release create v0.4.0 \
               --target main \
-              --title "Financeiro Eduardo v0.3.0" \
-              --notes "## Financeiro Eduardo v0.3.0\n\nAtualização com gráficos históricos, orçamentos, backup, impressão e melhorias de UX.\n\n### Novidades\n- Gráfico de barras com evolução financeira dos últimos 6 meses\n- Sistema de orçamento mensal por categoria com barras de progresso\n- Backup completo dos dados em JSON\n- Impressão de relatório mensal formatado\n- Notificações toast (substituindo alertas nativos)\n- Diálogos de confirmação estilizados\n- Navegação mobile com barra inferior\n- Seção de Configurações com backup e restauração\n- Ícone PWA do Financeiro Eduardo\n- Skeleton loading durante carregamento\n\n### Plataforma\nWindows, navegador e PWA compartilham os mesmos dados hospedados no Cloudflare D1.\n\nO executável do Windows será anexado a esta release assim que a compilação da versão 0.3.0 for concluída."
+              --title "Financeiro CENGTEC v0.4.0" \
+              --notes "## Financeiro CENGTEC v0.4.0\n\n### Novidades\n- Nova identidade Financeiro CENGTEC com logo oficial\n- Visão Geral exclusiva para cada perfil\n- Serviços compartilhados entre todos os perfis autenticados\n- Dados de Serviços separados dos saldos pessoais\n- Aplicativo Windows portátil atualizado\n\n### Plataforma\nWindows, navegador e PWA usam os mesmos dados persistidos no Cloudflare D1.\n\nO executável será anexado automaticamente após a compilação."
           fi

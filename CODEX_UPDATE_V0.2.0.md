@@ -1,5 +1,7 @@
 # Tarefa para Codex — Financeiro Eduardo v0.2.0
 
+> Documento histórico da versão 0.2.0. Desde a v0.4.0, o produto se chama **Financeiro CENGTEC** e não é exclusivo do Eduardo.
+
 ## Objetivo
 Concluir e estabilizar a atualização do Financeiro Eduardo para a versão 0.2.0, mantendo compatibilidade com Windows (Electron), PWA, Cloudflare Worker e Cloudflare D1.
 

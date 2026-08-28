@@ -1,8 +1,8 @@
 {
-  "name": "financeiro-eduardo",
-  "version": "0.3.0",
-  "description": "Sistema financeiro pessoal e profissional com controle de entradas, saídas, saldo e serviços",
-  "author": "Construtec",
+  "name": "financeiro-cengtec",
+  "version": "0.4.0",
+  "description": "Sistema financeiro da CENGTEC com visão geral privada por perfil e gestão de serviços compartilhada",
+  "author": "CENGTEC",
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
@@ -16,8 +16,8 @@
     "build:win": "electron-builder --win portable"
   },
   "build": {
-    "appId": "br.com.financeiroeduardo.app",
-    "productName": "Financeiro Eduardo",
+    "appId": "br.com.cengtec.financeiro",
+    "productName": "Financeiro CENGTEC",
     "files": [
       "desktop/**/*",
       "public/**/*",
@@ -26,7 +26,7 @@
     "win": {
       "target": ["portable"],
       "signAndEditExecutable": false,
-      "artifactName": "Financeiro-Eduardo-${version}.exe"
+      "artifactName": "Financeiro-CENGTEC-${version}.exe"
     }
   },
   "devDependencies": {

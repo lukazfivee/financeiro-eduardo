@@ -1,4 +1,4 @@
-name: Publicar Financeiro Eduardo no Cloudflare
+name: Publicar Financeiro CENGTEC no Cloudflare
 
 on:
   workflow_dispatch:

@@ -58,7 +58,7 @@
       if(filters.status)qs.set('status',filters.status);
       if(filters.q)qs.set('q',filters.q);
       const [dash,list]=await Promise.all([api(`/api/services/dashboard?month=${month}`),api(`/api/services?${qs}`)]);
-      el.innerHTML=`<header class="page-header services-header"><div><span class="eyebrow">FINANCEIRO PROFISSIONAL</span><h1>Serviços</h1><p>Receitas e custos de trabalho separados do financeiro pessoal.</p></div><div class="header-actions"><input id="servicesMonth" class="month-input" type="month" value="${month}"><button id="newServiceBtn" class="btn primary"><span class="ui-icon">+</span> Novo lançamento</button></div></header>
+      el.innerHTML=`<header class="page-header services-header"><div><span class="eyebrow">FINANCEIRO PROFISSIONAL COMPARTILHADO</span><h1>Serviços</h1><p>Receitas e custos de trabalho visíveis para todos os perfis, separados da Visão Geral privada.</p></div><div class="header-actions"><input id="servicesMonth" class="month-input" type="month" value="${month}"><button id="newServiceBtn" class="btn primary"><span class="ui-icon">+</span> Novo lançamento</button></div></header>
       <div class="kpi-grid services-kpis">
         <article class="kpi-card service-revenue"><div class="kpi-top"><span class="kpi-icon income">↑</span><span>Receitas de serviços</span></div><strong class="positive">${money(dash.receitas_cents)}</strong><small>${monthLabel(month)}</small></article>
         <article class="kpi-card"><div class="kpi-top"><span class="kpi-icon expense">↓</span><span>Custos dos serviços</span></div><strong class="negative">${money(dash.custos_cents)}</strong><small>${monthLabel(month)}</small></article>

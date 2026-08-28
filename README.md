@@ -1,66 +1,58 @@
-# Financeiro Eduardo
+# Financeiro CENGTEC
 
-Sistema financeiro pessoal para controle de entradas, saídas, saldo e fluxo de caixa.
+Sistema financeiro da CENGTEC para controle de entradas, saídas, saldo, fluxo de caixa e serviços.
+
+## Modelo de acesso
+
+- **Visão Geral privada:** lançamentos, contas, categorias, orçamentos, saldos, relatórios e backups pessoais são exclusivos de cada perfil.
+- **Serviços compartilhados:** todos os perfis autenticados visualizam e gerenciam os mesmos serviços, clientes, receitas, custos, valores contratados e recebimentos.
+- As informações de Serviços não entram no saldo nem nos relatórios da Visão Geral.
 
 ## Arquitetura
 
-O projeto reutiliza o padrão cloud do Centro de Custos Construtec V3:
-
-- frontend web responsivo em HTML/CSS/JavaScript;
-- PWA instalável em celular/computador;
+- frontend responsivo em HTML, CSS e JavaScript;
+- PWA instalável em celular e computador;
+- aplicativo Windows portátil em Electron;
 - Cloudflare Worker servindo API e arquivos estáticos;
-- Cloudflare D1 como banco de dados;
-- autenticação própria com senha derivada por PBKDF2 e sessões com token armazenado apenas em hash no banco.
+- Cloudflare D1 como banco persistente;
+- autenticação própria com PBKDF2 e sessões armazenadas apenas como hash.
 
 Fluxo principal:
 
-`navegador / PWA -> HTTPS -> Cloudflare Worker -> D1`
+`navegador / PWA / EXE -> HTTPS -> Cloudflare Worker -> D1`
 
-## Funcionalidades da V0.1
+## Funcionalidades
 
-- primeiro acesso para criação do usuário administrador;
-- login e logout;
-- lançamento de entradas e saídas;
-- data, descrição, valor, categoria, forma de pagamento e observações;
-- categorias financeiras padrão;
-- dashboard mensal com entradas, saídas, resultado do mês e saldo acumulado;
-- resumo das despesas por categoria;
-- filtro por mês;
-- exclusão de lançamento;
-- exportação CSV;
-- trilha básica de auditoria;
-- layout responsivo para desktop e celular;
-- estrutura PWA.
+- cadastro e login de múltiplos perfis;
+- dashboard mensal privado por perfil;
+- entradas, saídas, contas, transferências e categorias;
+- status de pagamento, recorrência e parcelamento;
+- orçamentos e histórico financeiro;
+- módulo compartilhado de Serviços;
+- clientes, contratos, recebimentos, custos e status de serviço;
+- exportação CSV, impressão e backup JSON;
+- modo claro/noturno;
+- PWA e executável Windows.
 
 ## Estrutura
 
-- `src/index.js`: API e autenticação do Worker;
-- `public/`: interface web/PWA;
+- `src/index.js`: API, autenticação e regras de isolamento/compartilhamento;
+- `public/`: interface web, PWA e identidade CENGTEC;
+- `desktop/main.cjs`: shell Electron;
 - `schema.sql`: estrutura do banco D1;
-- `wrangler.toml.example`: modelo de configuração Cloudflare;
-- `package.json`: scripts de desenvolvimento/deploy.
+- `wrangler.toml.example`: configuração do Cloudflare;
+- `.github/workflows/`: CI, deploy e release do EXE.
 
-## Publicação no Cloudflare
+## Desenvolvimento local
 
-1. Instale Node.js LTS.
-2. Clone o repositório e execute `npm install`.
-3. No Cloudflare, crie um banco D1 chamado `financeiro-eduardo`.
-4. Copie `wrangler.toml.example` para `wrangler.toml`.
-5. Substitua `__D1_DATABASE_ID__` pelo ID real do D1.
-6. Execute `npm run db:remote` para aplicar `schema.sql`.
-7. Execute `npm run deploy`.
-8. Abra a URL do Worker e faça a configuração do primeiro acesso.
+1. Instale Node.js 22 ou superior.
+2. Execute `npm install`.
+3. Copie `wrangler.toml.example` para `wrangler.toml` e informe o ID do D1.
+4. Execute `npm run db:local`.
+5. Execute `npm run dev`.
 
-Para desenvolvimento local, aplique o banco com `npm run db:local` e rode `npm run dev`.
+## Publicação
 
-## Próximas evoluções previstas
+O push em `main` executa CI, aplica a estrutura do D1, publica o Worker/PWA e gera o EXE Windows. A versão atual é `v0.4.0`.
 
-- edição de lançamentos;
-- contas a pagar/receber e status pendente/pago;
-- lançamentos recorrentes;
-- cartões e contas bancárias;
-- metas e orçamento mensal;
-- gráficos históricos;
-- anexos/comprovantes;
-- relatórios em PDF;
-- backup/exportação completa.
+Os identificadores internos legados do Worker e do banco (`financeiro-eduardo`) são mantidos para preservar URL, credenciais e dados existentes. A marca exibida e os novos artefatos usam **Financeiro CENGTEC**.

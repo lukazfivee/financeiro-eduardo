@@ -177,7 +177,7 @@ async function seedDefaultCategories(env, userId) {
 async function api(request, env, url) {
   const path = url.pathname;
 
-  if (path === '/health') return json({ ok: true, service: 'financeiro-eduardo' });
+  if (path === '/health') return json({ ok: true, service: 'financeiro-cengtec' });
 
   if (path === '/api/setup' && request.method === 'POST') {
     const count = await env.DB.prepare(`SELECT COUNT(*) AS c FROM users`).first();
@@ -314,15 +314,16 @@ async function api(request, env, url) {
     const status = url.searchParams.get('status');
     const category = url.searchParams.get('category');
     const search = text(url.searchParams.get('q'));
-    let sql = `SELECT * FROM service_transactions WHERE user_id=?`;
-    const binds=[user.id];
+    let sql = `SELECT * FROM service_transactions WHERE 1=1`;
+    const binds=[];
     if (range) { sql += ` AND transaction_date>=? AND transaction_date<?`; binds.push(range.start, range.end); }
     if (['entrada','saida'].includes(type)) { sql += ` AND type=?`; binds.push(type); }
     if (PAYMENT_STATUSES.includes(status)) { sql += ` AND payment_status=?`; binds.push(status); }
     if (category) { sql += ` AND category=?`; binds.push(category); }
     if (search) { sql += ` AND (service_name LIKE ? OR client_name LIKE ? OR description LIKE ? OR notes LIKE ? OR category LIKE ?)`; binds.push(`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`); }
     sql += ` ORDER BY transaction_date DESC, created_at DESC`;
-    const r=await env.DB.prepare(sql).bind(...binds).all();
+    const query=env.DB.prepare(sql);
+    const r=binds.length?await query.bind(...binds).all():await query.all();
     return json({items:r.results||[]});
   }
 
@@ -354,7 +355,7 @@ async function api(request, env, url) {
 
   if (path.startsWith('/api/services/') && request.method === 'PUT') {
     const id=path.split('/').pop();
-    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).first();
+    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=?`).bind(id).first();
     if(!found) return json({error:'Lançamento de serviço não encontrado.'},404);
     const b=await body(request);
     const type=b.type==='entrada'?'entrada':b.type==='saida'?'saida':null;
@@ -365,17 +366,17 @@ async function api(request, env, url) {
     const recurringType=choice(b.recurring_type,RECURRENCE_TYPES,'nenhuma');
     const installmentCount=Math.max(1, Number.parseInt(b.installment_count || '1', 10) || 1);
     const installmentNumber=Math.min(installmentCount, Math.max(1, Number.parseInt(b.installment_number || '1', 10) || 1));
-    await env.DB.prepare(`UPDATE service_transactions SET service_name=?,client_name=?,type=?,description=?,amount_cents=?,transaction_date=?,category=?,payment_method=?,notes=?,payment_status=?,service_status=?,contracted_amount_cents=?,received_amount_cents=?,expected_cost_cents=?,actual_cost_cents=?,recurring_type=?,installment_count=?,installment_number=?,updated_at=? WHERE id=? AND user_id=?`)
-      .bind(serviceName,optionalText(b.client_name),type,description,amountCents,date,optionalText(b.category),optionalText(b.payment_method),optionalText(b.notes),paymentStatus,serviceStatus,cents(b.contracted_amount),cents(b.received_amount),cents(b.expected_cost),cents(b.actual_cost),recurringType,installmentCount,installmentNumber,nowIso(),id,user.id).run();
+    await env.DB.prepare(`UPDATE service_transactions SET service_name=?,client_name=?,type=?,description=?,amount_cents=?,transaction_date=?,category=?,payment_method=?,notes=?,payment_status=?,service_status=?,contracted_amount_cents=?,received_amount_cents=?,expected_cost_cents=?,actual_cost_cents=?,recurring_type=?,installment_count=?,installment_number=?,updated_at=? WHERE id=?`)
+      .bind(serviceName,optionalText(b.client_name),type,description,amountCents,date,optionalText(b.category),optionalText(b.payment_method),optionalText(b.notes),paymentStatus,serviceStatus,cents(b.contracted_amount),cents(b.received_amount),cents(b.expected_cost),cents(b.actual_cost),recurringType,installmentCount,installmentNumber,nowIso(),id).run();
     await audit(env,user.id,'update','service_transaction',id,{serviceName,type,amountCents,date});
     return json({ok:true});
   }
 
   if (path.startsWith('/api/services/') && request.method === 'DELETE') {
     const id=path.split('/').pop();
-    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).first();
+    const found=await env.DB.prepare(`SELECT id FROM service_transactions WHERE id=?`).bind(id).first();
     if(!found) return json({error:'Lançamento de serviço não encontrado.'},404);
-    await env.DB.prepare(`DELETE FROM service_transactions WHERE id=? AND user_id=?`).bind(id,user.id).run();
+    await env.DB.prepare(`DELETE FROM service_transactions WHERE id=?`).bind(id).run();
     await audit(env,user.id,'delete','service_transaction',id);
     return json({ok:true});
   }
@@ -384,10 +385,10 @@ async function api(request, env, url) {
     const month=url.searchParams.get('month') || new Date().toISOString().slice(0,7);
     const range=monthRange(month);
     if(!range) return json({error:'Mês inválido.'},400);
-    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN service_status IN ('em_execucao','em_andamento','aguardando_pagamento','aprovado') THEN service_name END) servicos_em_andamento, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<?`).bind(user.id,range.start,range.end).first();
-    const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) resultado FROM service_transactions WHERE user_id=?`).bind(user.id).first();
-    const serviceMetrics=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<? GROUP BY service_name`).bind(user.id,range.start,range.end).all();
-    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(MAX(service_status),'em_execucao') service_status, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE user_id=? AND transaction_date>=? AND transaction_date<? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(user.id,range.start,range.end).all();
+    const summary=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos, COUNT(DISTINCT service_name) servicos, COUNT(DISTINCT CASE WHEN service_status IN ('em_execucao','em_andamento','aguardando_pagamento','aprovado') THEN service_name END) servicos_em_andamento, COUNT(DISTINCT CASE WHEN client_name IS NOT NULL AND client_name<>'' THEN client_name END) clientes FROM service_transactions WHERE transaction_date>=? AND transaction_date<?`).bind(range.start,range.end).first();
+    const total=await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE -amount_cents END),0) resultado FROM service_transactions`).first();
+    const serviceMetrics=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE transaction_date>=? AND transaction_date<? GROUP BY service_name`).bind(range.start,range.end).all();
+    const byService=await env.DB.prepare(`SELECT service_name, COALESCE(MAX(client_name),'') client_name, COALESCE(MAX(service_status),'em_execucao') service_status, COALESCE(SUM(CASE WHEN type='entrada' THEN amount_cents ELSE 0 END),0) receitas_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custos_cents, COALESCE(MAX(contracted_amount_cents),0) contratado_cents, COALESCE(MAX(received_amount_cents),0) recebido_cents, COALESCE(MAX(expected_cost_cents),0) custo_previsto_cents, COALESCE(SUM(CASE WHEN type='saida' THEN amount_cents ELSE 0 END),0) custo_realizado_cents FROM service_transactions WHERE transaction_date>=? AND transaction_date<? GROUP BY service_name ORDER BY receitas_cents DESC, service_name LIMIT 10`).bind(range.start,range.end).all();
     const lucro=(summary?.receitas||0)-(summary?.custos||0);
     const metrics=(serviceMetrics.results||[]).reduce((a,x)=>({contratado:a.contratado+Number(x.contratado_cents||0),recebido:a.recebido+Number(x.recebido_cents||0),custo_previsto:a.custo_previsto+Number(x.custo_previsto_cents||0),custo_realizado:a.custo_realizado+Number(x.custo_realizado_cents||0)}),{contratado:0,recebido:0,custo_previsto:0,custo_realizado:0});
     return json({month,receitas_cents:summary?.receitas||0,custos_cents:summary?.custos||0,lucro_cents:lucro,margem_percent:(summary?.receitas||0)?(lucro/(summary?.receitas||1))*100:0,resultado_total_cents:total?.resultado||0,contratado_cents:metrics.contratado,recebido_cents:metrics.recebido,a_receber_cents:Math.max(0,metrics.contratado-metrics.recebido),custo_previsto_cents:metrics.custo_previsto,custo_realizado_cents:metrics.custo_realizado,servicos:summary?.servicos||0,servicos_em_andamento:summary?.servicos_em_andamento||0,clientes:summary?.clientes||0,by_service:byService.results||[]});
@@ -468,7 +469,7 @@ async function api(request, env, url) {
     const r=await env.DB.prepare(`SELECT transaction_date,type,description,amount_cents,payment_method,notes FROM transactions WHERE user_id=? ORDER BY transaction_date`).bind(user.id).all();
     const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
     const lines=['Data;Tipo;Descrição;Valor;Forma de pagamento;Observações',...(r.results||[]).map(x=>[x.transaction_date,x.type,x.description,(x.amount_cents/100).toFixed(2).replace('.',','),x.payment_method,x.notes].map(esc).join(';'))];
-    return new Response(lines.join('\n'),{headers:{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="financeiro-eduardo.csv"'}});
+    return new Response(lines.join('\n'),{headers:{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="financeiro-cengtec.csv"'}});
   }
 
   if (path === '/api/dashboard/history' && request.method === 'GET') {
@@ -521,12 +522,12 @@ async function api(request, env, url) {
       env.DB.prepare(`SELECT * FROM categories WHERE user_id=?`).bind(user.id).all(),
       env.DB.prepare(`SELECT * FROM accounts WHERE user_id=?`).bind(user.id).all(),
       env.DB.prepare(`SELECT * FROM transactions WHERE user_id=?`).bind(user.id).all(),
-      env.DB.prepare(`SELECT * FROM service_transactions WHERE user_id=?`).bind(user.id).all(),
+      env.DB.prepare(`SELECT * FROM service_transactions`).all(),
       env.DB.prepare(`SELECT * FROM budgets WHERE user_id=?`).bind(user.id).all(),
       env.DB.prepare(`SELECT * FROM audit_log WHERE user_id=? ORDER BY id DESC LIMIT 500`).bind(user.id).all()
     ]);
     const data = {
-      version: '0.3.0',
+      version: '0.4.0',
       exported_at: nowIso(),
       categories: cats.results || [],
       accounts: accts.results || [],
@@ -536,7 +537,7 @@ async function api(request, env, url) {
       audit_log: auditRows.results || []
     };
     return new Response(JSON.stringify(data, null, 2), {
-      headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="financeiro-eduardo-backup.json"' }
+      headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="financeiro-cengtec-backup.json"' }
     });
   }
 
@@ -550,7 +551,7 @@ export default {
       if (url.pathname === '/health' || url.pathname.startsWith('/api/')) return await api(request,env,url);
       return env.ASSETS.fetch(request);
     } catch (error) {
-      console.error('financeiro-eduardo worker error', error);
+      console.error('financeiro-cengtec worker error', error);
       return json({ error: 'Erro interno no servidor. Tente novamente em alguns segundos.' }, 500);
     }
   }

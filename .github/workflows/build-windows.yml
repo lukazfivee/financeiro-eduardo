@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: Gerar Financeiro CENGTEC 0.4.0
+    name: Gerar Financeiro CENGTEC 0.4.1
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -41,20 +41,20 @@ jobs:
       - name: Publicar artefato
         uses: actions/upload-artifact@v4
         with:
-          name: Financeiro-CENGTEC-Windows-0.4.0
+          name: Financeiro-CENGTEC-Windows-0.4.1
           path: dist/*.exe
           if-no-files-found: error
 
-      - name: Anexar executavel na release v0.4.0
+      - name: Anexar executavel na release v0.4.1
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if ! gh release view v0.4.0 >/dev/null 2>&1; then
-            gh release create v0.4.0 \
+          if ! gh release view v0.4.1 >/dev/null 2>&1; then
+            gh release create v0.4.1 \
               --target main \
-              --title "Financeiro CENGTEC v0.4.0" \
-              --notes "Financeiro CENGTEC v0.4.0: nova identidade CENGTEC, Visão Geral privada por perfil e Serviços compartilhados."
+              --title "Financeiro CENGTEC v0.4.1" \
+              --notes "Financeiro CENGTEC v0.4.1: identidade visual atualizada com a logo oficial fornecida pela CENGTEC."
           fi
-          gh release upload v0.4.0 dist/*.exe --clobber
+          gh release upload v0.4.1 dist/*.exe --clobber

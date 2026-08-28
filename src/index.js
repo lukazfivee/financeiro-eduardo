@@ -527,7 +527,7 @@ async function api(request, env, url) {
       env.DB.prepare(`SELECT * FROM audit_log WHERE user_id=? ORDER BY id DESC LIMIT 500`).bind(user.id).all()
     ]);
     const data = {
-      version: '0.4.0',
+      version: '0.4.1',
       exported_at: nowIso(),
       categories: cats.results || [],
       accounts: accts.results || [],

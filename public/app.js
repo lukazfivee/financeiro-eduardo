@@ -38,7 +38,7 @@ function loginTemplate(mode = 'login') {
   const isLogin = mode === 'login';
   return `<main class="auth-page">
     <section class="auth-hero">
-      <div class="auth-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
+      <div class="auth-brand"><img class="brand-logo" src="cengtec-logo.png" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
       <div class="auth-copy">
         <span class="eyebrow">CONTROLE FINANCEIRO</span>
         <h1>Seu dinheiro,<br><strong>mais organizado.</strong></h1>
@@ -49,7 +49,7 @@ function loginTemplate(mode = 'login') {
     </section>
     <section class="auth-panel">
       <div class="auth-card">
-        <div class="mobile-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
+        <div class="mobile-brand"><img class="brand-logo" src="cengtec-logo.png" alt="CENGTEC"><span>Financeiro CENGTEC</span></div>
         <span class="eyebrow">${isLogin ? 'BEM-VINDO DE VOLTA' : 'NOVA CONTA'}</span>
         <h2>${isLogin ? 'Entre na sua conta' : 'Crie sua conta'}</h2>
         <p>${isLogin ? 'Informe seus dados para acessar o painel.' : 'Preencha os campos abaixo para cadastrar seu acesso.'}</p>
@@ -203,7 +203,7 @@ function renderApp(){
   const categoryFilterOptions=state.categories.map(c=>`<option value="${c.id}" ${state.filters.category_id===c.id?'selected':''}>${esc((c.icon||'')+' '+c.name)}</option>`).join('');
   app.innerHTML=`<div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-brand"><img class="brand-logo" src="cengtec-logo.jpg" alt="CENGTEC"><div><strong>Financeiro</strong><span>CENGTEC</span></div></div>
+      <div class="sidebar-brand"><img class="brand-logo" src="cengtec-logo.png" alt="CENGTEC"><div><strong>Financeiro</strong><span>CENGTEC</span></div></div>
       <nav class="sidebar-nav">
         <button class="nav-item active" id="navHome">${icon('home')}<span>Visão geral</span></button>
         <button class="nav-item" id="navTransactions">${icon('list')}<span>Movimentações</span></button>
@@ -243,7 +243,7 @@ function renderApp(){
           <header class="page-header"><div><span class="eyebrow">SISTEMA</span><h1>Configurações</h1><p>Backup, restauração e preferências.</p></div></header>
           <div class="settings-card"><h3>💾 Backup dos dados</h3><p>Exporte todos os seus dados em formato JSON para manter um backup seguro.</p><div class="settings-actions"><button id="backupBtn" class="btn primary">Baixar backup</button></div></div>
           <div class="settings-card"><h3>📥 Restaurar dados</h3><p>Importe um backup JSON gerado anteriormente. Os dados importados serão adicionados ao sistema.</p><div class="settings-actions"><input type="file" id="restoreFile" accept=".json" style="display:none"><button id="restoreBtn" class="btn secondary">Selecionar arquivo</button></div></div>
-          <div class="settings-card"><h3>ℹ️ Sobre o sistema</h3><p>Financeiro CENGTEC v0.4.0 — visão geral privada por perfil e Serviços compartilhados.</p></div>
+          <div class="settings-card"><h3>ℹ️ Sobre o sistema</h3><p>Financeiro CENGTEC v0.4.1 — visão geral privada por perfil e Serviços compartilhados.</p></div>
         </section>
 
 </main>

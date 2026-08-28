@@ -32,7 +32,7 @@ Future changes must preserve data visibility boundaries, keep web/PWA/Electron b
 
 ## Brand Commitments
 
-The product name is Financeiro CENGTEC. The official CENGTEC logo is stored in `public/cengtec-logo.jpg`, extracted from the company receipt supplied for the v0.4.0 rebrand.
+The product name is Financeiro CENGTEC. The official CENGTEC logo supplied by the project owner is stored in `public/cengtec-logo.png`.
 
 ## Product Principles
 

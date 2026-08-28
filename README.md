@@ -53,6 +53,6 @@ Fluxo principal:
 
 ## Publicação
 
-O push em `main` executa CI, aplica a estrutura do D1, publica o Worker/PWA e gera o EXE Windows. A versão atual é `v0.4.0`.
+O push em `main` executa CI, aplica a estrutura do D1, publica o Worker/PWA e gera o EXE Windows. A versão atual é `v0.4.1`.
 
 Os identificadores internos legados do Worker e do banco (`financeiro-eduardo`) são mantidos para preservar URL, credenciais e dados existentes. A marca exibida e os novos artefatos usam **Financeiro CENGTEC**.

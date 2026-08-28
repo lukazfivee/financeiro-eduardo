@@ -116,11 +116,10 @@ async function migrateAppSchema(env) {
 }
 
 async function ensureDefaultAccount(env, userId) {
-  const count = await env.DB.prepare(`SELECT COUNT(*) c FROM accounts WHERE user_id=?`).bind(userId).first();
-  if ((count?.c || 0) > 0) return;
   const ts = nowIso();
-  await env.DB.prepare(`INSERT INTO accounts(id,user_id,name,type,opening_balance_cents,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`)
-    .bind(uid(), userId, 'Carteira principal', 'carteira', 0, ts, ts).run();
+  await env.DB.prepare(`INSERT INTO accounts(id,user_id,name,type,opening_balance_cents,created_at,updated_at)
+    SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE user_id=?)`)
+    .bind(uid(), userId, 'Carteira principal', 'carteira', 0, ts, ts, userId).run();
 }
 
 async function sha256Hex(value) {
